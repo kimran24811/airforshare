@@ -1,51 +1,46 @@
-# KissanBhai — Setup Guide
+# KissanBhai — Expo Setup Guide
 
-## Before You Open in Android Studio
+## Step 1: Paste Your Firebase Config
 
-### 1. Create Firebase Project
-1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Create a new project called **KissanBhai**
-3. Add an **Android** app with package name: `com.kissanbhai.app`
-4. Download `google-services.json` and place it in the `app/` folder
-5. Enable **Authentication** → Email/Password sign-in
-6. Enable **Cloud Firestore** → Start in production mode
+Open `src/config/firebase.ts` and replace the placeholder values with your
+actual Firebase config (copied from Firebase Console → Project Settings → Your web app):
 
-### 2. Create Admin Account
-In Firebase Console → Authentication → Users → Add user:
-- Email: (your brother's email)
-- Password: (set a strong password)
-
-### 3. Firestore Security Rules
-In Firebase Console → Firestore → Rules, paste:
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
+```ts
+const firebaseConfig = {
+  apiKey: 'AIzaSy...',
+  authDomain: 'kissanbhai-xxxxx.firebaseapp.com',
+  projectId: 'kissanbhai-xxxxx',
+  storageBucket: 'kissanbhai-xxxxx.appspot.com',
+  messagingSenderId: '123456789',
+  appId: '1:123456789:web:abc123',
+};
 ```
 
-### 4. Create Firestore Indexes
-These composite indexes are needed for queries:
-- Collection: `transactions` — Fields: `category` ASC, `date` DESC
-- Collection: `transactions` — Fields: `customerId` ASC, `date` DESC
+## Step 2: Install & Run
 
-(Firebase will prompt you in Logcat when the app first runs if these are missing — click the link to create them.)
+```bash
+npm install
+npx expo start
+```
 
-### 5. Open in Android Studio
-1. Open Android Studio
-2. File → Open → select this `kissanbhai/` folder
-3. Wait for Gradle sync to finish
-4. Run on device or emulator (API 24+)
+Scan the QR code with the **Expo Go** app on your Android phone.
 
-## App Usage
-- Sign in with the admin email/password
-- Home: see overall stats for both businesses
-- Tap **Pesticide** or **Solar** tile to view that category
-- Tap **+** to add a new entry
-- Type customer name → suggestions appear → select existing or add new
-- Add items with price and amount paid — balance auto-calculates
-- Tap any entry to see details or record a payment
+## Step 3: Firestore Composite Indexes
+
+When you first run the app, Firestore may log errors with clickable links to
+create the required indexes. Click those links, or manually create:
+
+| Collection     | Field 1           | Field 2              |
+|----------------|-------------------|----------------------|
+| transactions   | category (Asc)    | date (Desc)          |
+| transactions   | customerId (Asc)  | date (Desc)          |
+
+## Build APK (for distribution)
+
+```bash
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
+```
+
+This builds a standalone APK you can install directly on Android.

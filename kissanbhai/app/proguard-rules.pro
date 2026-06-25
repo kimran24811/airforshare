@@ -1,3 +1,0 @@
--keep class com.kissanbhai.app.data.model.** { *; }
--keepattributes Signature
--keepattributes *Annotation*
