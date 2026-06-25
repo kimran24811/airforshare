@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KissanBhai</string>
+    <string name="home">Home</string>
+    <string name="pesticide">Pesticide</string>
+    <string name="solar">Solar</string>
+    <string name="new_entry">New Entry</string>
+    <string name="search_customers">Search customers…</string>
+    <string name="total_sales">Total Sales</string>
+    <string name="total_receivable">Total Receivable</string>
+    <string name="outstanding">Outstanding ₨</string>
+    <string name="settled">Settled ✓</string>
+    <string name="no_entries">No entries yet.\nTap + to add one.</string>
+    <string name="save">Save Entry</string>
+    <string name="add_item">+ Add Item</string>
+    <string name="select_customer">Select or add customer</string>
+    <string name="description_hint">Description (optional)</string>
+    <string name="item_name_hint">Item name</string>
+    <string name="price_hint">Price ₨</string>
+    <string name="paid_hint">Paid ₨</string>
+</resources>

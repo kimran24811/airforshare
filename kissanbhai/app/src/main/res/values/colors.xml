@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="md_theme_primary">#2E7D32</color>
+    <color name="md_theme_onPrimary">#FFFFFF</color>
+    <color name="md_theme_primaryContainer">#A5D6A7</color>
+    <color name="md_theme_onPrimaryContainer">#1B5E20</color>
+    <color name="md_theme_secondary">#F57F17</color>
+    <color name="md_theme_onSecondary">#FFFFFF</color>
+    <color name="md_theme_background">#FAFAFA</color>
+    <color name="md_theme_surface">#FFFFFF</color>
+    <color name="md_theme_onSurface">#1C1B1F</color>
+    <color name="md_theme_onSurfaceVariant">#49454F</color>
+    <color name="md_theme_outline">#79747E</color>
+    <color name="color_red">@android:color/holo_red_dark</color>
+    <color name="color_green">@android:color/holo_green_dark</color>
+    <color name="pesticide_green">#2E7D32</color>
+    <color name="solar_orange">#E65100</color>
+</resources>
