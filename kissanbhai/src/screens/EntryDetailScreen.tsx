@@ -12,8 +12,6 @@ import { Transaction } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { authenticate } from '../utils/biometric';
 import { generateEntryPdf } from '../utils/pdf';
-import PhotoPicker from '../components/PhotoPicker';
-import VoiceRecorder from '../components/VoiceRecorder';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'EntryDetail'>;
@@ -75,18 +73,6 @@ export default function EntryDetailScreen({ navigation, route }: Props) {
         },
       },
     ]);
-  };
-
-  const updatePhotos = async (urls: string[]) => {
-    if (!txn) return;
-    try { await updateDoc(doc(db, 'transactions', txn.id), { photoUrls: urls }); }
-    catch (e: any) { Alert.alert('Error', e.message); }
-  };
-
-  const updateVoice = async (url: string | undefined) => {
-    if (!txn) return;
-    try { await updateDoc(doc(db, 'transactions', txn.id), { voiceNoteUrl: url ?? null }); }
-    catch (e: any) { Alert.alert('Error', e.message); }
   };
 
   if (!txn) {
@@ -215,14 +201,6 @@ export default function EntryDetailScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           )
         )}
-
-        <View style={s.card}>
-          <PhotoPicker transactionId={txn.id} photoUrls={txn.photoUrls ?? []} onUpdate={updatePhotos} />
-        </View>
-
-        <View style={s.card}>
-          <VoiceRecorder transactionId={txn.id} voiceNoteUrl={txn.voiceNoteUrl} onUpdate={updateVoice} />
-        </View>
 
         <TouchableOpacity
           style={[s.actionBtn, { backgroundColor: '#1565C0' }]}
