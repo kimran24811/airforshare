@@ -1,12 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Transaction } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { useData } from '../context/DataContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Category'>;
@@ -25,49 +23,37 @@ type CustomerGroup = {
 
 export default function CategoryScreen({ navigation, route }: Props) {
   const { category } = route.params;
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const { transactions } = useData();
 
-  useEffect(() => {
-    return onSnapshot(
-      query(collection(db, 'transactions'), where('category', '==', category), orderBy('date', 'desc')),
-      snap => setAllTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))),
-    );
-  }, [category]);
+  const filtered = transactions.filter(t => !t.deleted && t.category === category);
 
-  const transactions = allTransactions.filter(t => !t.deleted);
-
-  // Group by customer
   const customerMap = new Map<string, CustomerGroup>();
-  for (const t of transactions) {
-    const existing = customerMap.get(t.customerId);
-    if (existing) {
-      existing.entries += 1;
-      existing.totalAmount += t.totalAmount;
-      existing.totalPaid += t.totalPaid;
-      existing.totalBalance += t.totalBalance;
+  for (const t of filtered) {
+    const ex = customerMap.get(t.customerId);
+    if (ex) {
+      ex.entries++;
+      ex.totalAmount  += t.totalAmount;
+      ex.totalPaid    += t.totalPaid;
+      ex.totalBalance += t.totalBalance;
     } else {
       customerMap.set(t.customerId, {
-        customerId: t.customerId,
-        customerName: t.customerName,
-        entries: 1,
-        totalAmount: t.totalAmount,
-        totalPaid: t.totalPaid,
-        totalBalance: t.totalBalance,
-        lastDate: t.date,
+        customerId: t.customerId, customerName: t.customerName,
+        entries: 1, totalAmount: t.totalAmount, totalPaid: t.totalPaid,
+        totalBalance: t.totalBalance, lastDate: t.date,
       });
     }
   }
-  const customerGroups = Array.from(customerMap.values());
+  const groups = Array.from(customerMap.values());
 
-  const totalSales = transactions.reduce((s, t) => s + t.totalAmount, 0);
-  const totalReceived = transactions.reduce((s, t) => s + t.totalPaid, 0);
-  const totalRemaining = transactions.reduce((s, t) => s + t.totalBalance, 0);
+  const totalSales     = filtered.reduce((s, t) => s + t.totalAmount, 0);
+  const totalReceived  = filtered.reduce((s, t) => s + t.totalPaid, 0);
+  const totalRemaining = filtered.reduce((s, t) => s + t.totalBalance, 0);
   const label = category.charAt(0).toUpperCase() + category.slice(1);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
           <Text style={{ fontSize: 22 }}>←</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>{label}</Text>
@@ -77,21 +63,19 @@ export default function CategoryScreen({ navigation, route }: Props) {
       <View style={s.statsCard}>
         <View style={{ flexDirection: 'row' }}>
           <StatBox label="Total Sales" value={formatCurrency(totalSales)} color="#2E7D32" />
-          <StatBox label="Received" value={formatCurrency(totalReceived)} color="#1565C0" />
-          <StatBox label="Remaining" value={formatCurrency(totalRemaining)} color="#C62828" />
+          <StatBox label="Received"    value={formatCurrency(totalReceived)} color="#1565C0" />
+          <StatBox label="Remaining"   value={formatCurrency(totalRemaining)} color="#C62828" />
         </View>
         <Text style={{ color: '#888', fontSize: 12, marginTop: 10 }}>
-          {transactions.length} entries  •  {customerGroups.length} customers
+          {filtered.length} entries  •  {groups.length} customers
         </Text>
       </View>
 
       <FlatList
-        data={customerGroups}
+        data={groups}
         keyExtractor={g => g.customerId}
         contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
-        ListEmptyComponent={
-          <Text style={s.empty}>No entries yet.{'\n'}Tap + to add one.</Text>
-        }
+        ListEmptyComponent={<Text style={s.empty}>No entries yet.{'\n'}Tap + to add one.</Text>}
         renderItem={({ item }) => {
           const settled = item.totalBalance <= 0;
           const dateStr = item.lastDate?.toDate?.()?.toLocaleDateString(
@@ -142,7 +126,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E8F5E9',
   },
-  backBtn: { padding: 4 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   statsCard: {
     backgroundColor: '#fff', padding: 16, margin: 16, borderRadius: 14,

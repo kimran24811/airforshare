@@ -6,14 +6,12 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import {
-  collection, addDoc, onSnapshot, query, orderBy,
-  Timestamp, getDoc, doc, updateDoc,
-} from 'firebase/firestore';
+import { getDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Customer, TransactionItem, Category } from '../types';
+import { Customer, TransactionItem } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { useData } from '../context/DataContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'NewEntry'>;
@@ -23,8 +21,10 @@ type Props = {
 const emptyItem = (): TransactionItem => ({ name: '', price: 0, paid: 0, balance: 0 });
 
 export default function NewEntryScreen({ navigation, route }: Props) {
-  const presetCategory = route.params?.category;
-  const editId = route.params?.editId;
+  const { customers, categories, addTransaction, addCustomer } = useData();
+
+  const presetCategory   = route.params?.category;
+  const editId           = route.params?.editId;
   const presetCustomerId = route.params?.customerId;
   const presetCustomerName = route.params?.customerName;
   const isEdit = !!editId;
@@ -33,28 +33,14 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     ? { id: presetCustomerId, name: presetCustomerName, phone: '' }
     : null;
 
-  const [category, setCategory] = useState<string>(presetCategory ?? '');
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerSearch, setCustomerSearch] = useState(presetCustomerName ?? '');
+  const [category,            setCategory]           = useState<string>(presetCategory ?? '');
+  const [customerSearch,      setCustomerSearch]      = useState(presetCustomerName ?? '');
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(presetCustomer);
-  const [description, setDescription] = useState('');
-  const [items, setItems] = useState<TransactionItem[]>([emptyItem()]);
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(isEdit);
-
-  useEffect(() => {
-    const unsubCust = onSnapshot(
-      query(collection(db, 'customers'), orderBy('name')),
-      snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
-    );
-    const unsubCat = onSnapshot(
-      query(collection(db, 'categories'), orderBy('createdAt')),
-      snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category))),
-    );
-    return () => { unsubCust(); unsubCat(); };
-  }, []);
+  const [selectedCustomer,    setSelectedCustomer]    = useState<Customer | null>(presetCustomer);
+  const [description,         setDescription]         = useState('');
+  const [items,               setItems]               = useState<TransactionItem[]>([emptyItem()]);
+  const [saving,              setSaving]              = useState(false);
+  const [loading,             setLoading]             = useState(isEdit);
 
   // Pre-fill for edit mode
   useEffect(() => {
@@ -71,6 +57,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     });
   }, [editId]);
 
+  // Customer suggestions
   useEffect(() => {
     if (!customerSearch.trim() || selectedCustomer) { setCustomerSuggestions([]); return; }
     const lower = customerSearch.toLowerCase();
@@ -93,8 +80,8 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     });
   };
 
-  const totalAmount = items.reduce((s, i) => s + i.price, 0);
-  const totalPaid = items.reduce((s, i) => s + i.paid, 0);
+  const totalAmount  = items.reduce((s, i) => s + i.price, 0);
+  const totalPaid    = items.reduce((s, i) => s + i.paid, 0);
   const totalBalance = totalAmount - totalPaid;
 
   const resolveCustomer = async (): Promise<Customer | null> => {
@@ -103,8 +90,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     if (!name) return null;
     const existing = customers.find(c => c.name.toLowerCase() === name.toLowerCase());
     if (existing) return existing;
-    const ref = await addDoc(collection(db, 'customers'), { name, phone: '', createdAt: Timestamp.now() });
-    return { id: ref.id, name, phone: '' };
+    return addCustomer(name, '');
   };
 
   const handleSave = async () => {
@@ -117,8 +103,8 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     setSaving(true);
     try {
       const payload = {
-        customerId: customer.id,
-        customerName: customer.name,
+        customerId:    customer.id,
+        customerName:  customer.name,
         customerPhone: customer.phone,
         category,
         items: validItems,
@@ -134,7 +120,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
       } else {
-        await addDoc(collection(db, 'transactions'), { ...payload, date: Timestamp.now() });
+        await addTransaction(payload as any);
         Alert.alert('Saved', 'Entry saved successfully', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
@@ -211,7 +197,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
             </>
           )}
 
-          {/* Category — hidden if preset */}
+          {/* Category */}
           {!presetCategory && (
             <>
               <Text style={s.label}>Category</Text>
@@ -242,7 +228,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
             multiline
           />
 
-          {/* Items table header */}
+          {/* Items */}
           <View style={{ flexDirection: 'row', marginBottom: 6 }}>
             <Text style={[s.colHead, { flex: 3 }]}>Item Name</Text>
             <Text style={[s.colHead, { flex: 2 }]}>Price ₨</Text>

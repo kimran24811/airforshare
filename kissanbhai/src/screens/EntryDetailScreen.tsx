@@ -1,17 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, TextInput, SafeAreaView, ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { Timestamp } from 'firebase/firestore';
 import { RootStackParamList } from '../navigation/types';
-import { Transaction } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { authenticate } from '../utils/biometric';
 import { generateEntryPdf } from '../utils/pdf';
+import { useData } from '../context/DataContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'EntryDetail'>;
@@ -19,29 +18,25 @@ type Props = {
 };
 
 export default function EntryDetailScreen({ navigation, route }: Props) {
-  const [txn, setTxn] = useState<Transaction | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentNote, setPaymentNote] = useState('');
-  const [showPayment, setShowPayment] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
+  const { transactions, updateTransaction } = useData();
+  const txn = transactions.find(t => t.id === route.params.transactionId) ?? null;
 
-  useEffect(() => {
-    return onSnapshot(doc(db, 'transactions', route.params.transactionId), d => {
-      if (d.exists()) setTxn({ id: d.id, ...d.data() } as Transaction);
-    });
-  }, [route.params.transactionId]);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote,   setPaymentNote]   = useState('');
+  const [showPayment,   setShowPayment]   = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [pdfLoading,    setPdfLoading]    = useState(false);
 
   const handlePayment = async () => {
     const amount = parseFloat(paymentAmount);
     if (!amount || amount <= 0 || !txn) { Alert.alert('Invalid', 'Enter a valid amount'); return; }
     setSaving(true);
     try {
-      const newPaid = Math.min(txn.totalPaid + amount, txn.totalAmount);
-      const history = txn.paymentHistory ?? [];
-      await updateDoc(doc(db, 'transactions', txn.id), {
-        totalPaid: newPaid,
-        totalBalance: txn.totalAmount - newPaid,
+      const newPaid    = Math.min(txn.totalPaid + amount, txn.totalAmount);
+      const history    = txn.paymentHistory ?? [];
+      await updateTransaction(txn.id, {
+        totalPaid:      newPaid,
+        totalBalance:   txn.totalAmount - newPaid,
         paymentHistory: [...history, { amount, note: paymentNote.trim(), date: Timestamp.now() }],
       });
       setPaymentAmount('');
@@ -65,7 +60,7 @@ export default function EntryDetailScreen({ navigation, route }: Props) {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await updateDoc(doc(db, 'transactions', txn.id), { deleted: true, deletedAt: Timestamp.now() });
+            await updateTransaction(txn.id, { deleted: true, deletedAt: Timestamp.now() } as any);
             navigation.goBack();
           } catch (e: any) {
             Alert.alert('Error', e.message);
@@ -83,8 +78,7 @@ export default function EntryDetailScreen({ navigation, route }: Props) {
     );
   }
 
-  const dateStr =
-    txn.date?.toDate?.()?.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) ?? '';
+  const dateStr = txn.date?.toDate?.()?.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) ?? '';
   const settled = txn.totalBalance <= 0;
 
   return (

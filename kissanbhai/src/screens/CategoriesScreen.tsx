@@ -1,46 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Alert, ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  collection, onSnapshot, query, orderBy,
-  addDoc, deleteDoc, doc, Timestamp,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Category } from '../types';
 import { authenticate } from '../utils/biometric';
+import { useData } from '../context/DataContext';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Categories'> };
 
 const EMOJIS = ['🌿', '☀️', '🌾', '🐄', '🔧', '💊', '🌱', '🏗️', '💧', '🌻', '🍅', '🐓'];
 
 export default function CategoriesScreen({ navigation }: Props) {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [newName, setNewName] = useState('');
+  const { categories, addCategory, deleteCategory } = useData();
+  const [newName,  setNewName]  = useState('');
   const [newEmoji, setNewEmoji] = useState('🌿');
-  const [saving, setSaving] = useState(false);
+  const [saving,   setSaving]   = useState(false);
 
-  useEffect(() => {
-    return onSnapshot(
-      query(collection(db, 'categories'), orderBy('createdAt')),
-      snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category))),
-    );
-  }, []);
-
-  const addCategory = async () => {
+  const handleAdd = async () => {
     if (!newName.trim()) { Alert.alert('Enter a name'); return; }
     const ok = await authenticate('Confirm add category');
     if (!ok) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, 'categories'), {
-        name: newName.trim().toLowerCase(),
-        emoji: newEmoji,
-        createdAt: Timestamp.now(),
-      });
+      await addCategory(newName.trim().toLowerCase(), newEmoji);
       setNewName('');
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -49,23 +33,19 @@ export default function CategoriesScreen({ navigation }: Props) {
     }
   };
 
-  const deleteCategory = async (cat: Category) => {
-    const ok = await authenticate(`Confirm delete "${cat.name}"`);
+  const handleDelete = async (id: string, name: string) => {
+    const ok = await authenticate(`Confirm delete "${name}"`);
     if (!ok) return;
-    Alert.alert(
-      'Delete Category',
-      `Delete "${cat.name}"? Existing entries won't be deleted but this category tile will be removed from Home.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try { await deleteDoc(doc(db, 'categories', cat.id)); }
-            catch (e: any) { Alert.alert('Error', e.message); }
-          },
+    Alert.alert('Delete Category', `Delete "${name}"? Existing entries won't be deleted.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try { await deleteCategory(id); }
+          catch (e: any) { Alert.alert('Error', e.message); }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   return (
@@ -87,11 +67,8 @@ export default function CategoriesScreen({ navigation }: Props) {
             <Text style={{ fontWeight: '600', marginBottom: 10 }}>Add New Category</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
               {EMOJIS.map(e => (
-                <TouchableOpacity
-                  key={e}
-                  onPress={() => setNewEmoji(e)}
-                  style={[s.emojiBtn, newEmoji === e && s.emojiSelected]}
-                >
+                <TouchableOpacity key={e} onPress={() => setNewEmoji(e)}
+                  style={[s.emojiBtn, newEmoji === e && s.emojiSelected]}>
                   <Text style={{ fontSize: 20 }}>{e}</Text>
                 </TouchableOpacity>
               ))}
@@ -104,7 +81,7 @@ export default function CategoriesScreen({ navigation }: Props) {
                 value={newName}
                 onChangeText={setNewName}
               />
-              <TouchableOpacity style={s.addBtn} onPress={addCategory} disabled={saving}>
+              <TouchableOpacity style={s.addBtn} onPress={handleAdd} disabled={saving}>
                 {saving
                   ? <ActivityIndicator color="#fff" size="small" />
                   : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>}
@@ -118,7 +95,7 @@ export default function CategoriesScreen({ navigation }: Props) {
             <Text style={{ fontSize: 16, fontWeight: '600', flex: 1, textTransform: 'capitalize' }}>
               {item.name}
             </Text>
-            <TouchableOpacity onPress={() => deleteCategory(item)} style={s.delBtn}>
+            <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={s.delBtn}>
               <Text style={{ color: '#C62828', fontSize: 13, fontWeight: '600' }}>Delete</Text>
             </TouchableOpacity>
           </View>

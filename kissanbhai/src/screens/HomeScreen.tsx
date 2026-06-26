@@ -1,64 +1,41 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, SafeAreaView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  collection, onSnapshot, query, orderBy,
-} from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { auth, db } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Customer, Transaction, Category } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { useData } from '../context/DataContext';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
 
 export default function HomeScreen({ navigation }: Props) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const { transactions, customers, categories, isOnline, pendingCount } = useData();
   const [search, setSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<Customer[]>([]);
-
-  useEffect(() => {
-    const unsubC = onSnapshot(
-      query(collection(db, 'customers'), orderBy('name')),
-      snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
-    );
-    const unsubT = onSnapshot(
-      query(collection(db, 'transactions'), orderBy('date', 'desc')),
-      snap => setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))),
-    );
-    const unsubCat = onSnapshot(
-      query(collection(db, 'categories'), orderBy('createdAt')),
-      snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category))),
-    );
-    return () => { unsubC(); unsubT(); unsubCat(); };
-  }, []);
-
-  useEffect(() => {
-    if (search.trim().length < 1) { setSuggestions([]); return; }
-    const q = search.toLowerCase();
-    setSuggestions(
-      customers.filter(c => c.name.toLowerCase().includes(q) || c.phone?.includes(search)),
-    );
-  }, [search, customers]);
 
   const active = transactions.filter(t => !t.deleted);
+
+  const suggestions = search.trim().length > 0
+    ? customers.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        c.phone?.includes(search)
+      ).slice(0, 5)
+    : [];
 
   const statsFor = (cat: string) => {
     const list = active.filter(t => t.category === cat);
     return {
       sales: list.reduce((s, t) => s + t.totalAmount, 0),
-      recv: list.reduce((s, t) => s + t.totalBalance, 0),
+      recv:  list.reduce((s, t) => s + t.totalBalance, 0),
     };
   };
 
   const overall = {
     sales: active.reduce((s, t) => s + t.totalAmount, 0),
-    recv: active.reduce((s, t) => s + t.totalBalance, 0),
+    recv:  active.reduce((s, t) => s + t.totalBalance, 0),
   };
 
   return (
@@ -82,17 +59,21 @@ export default function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {!isOnline && (
+        <View style={s.offlineBanner}>
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+            📴 Offline mode{pendingCount > 0 ? ` — ${pendingCount} pending` : ' — all changes saved locally'}
+          </Text>
+        </View>
+      )}
+
       {suggestions.length > 0 && (
         <View style={s.dropdown}>
-          {suggestions.slice(0, 5).map(c => (
+          {suggestions.map(c => (
             <TouchableOpacity
               key={c.id}
               style={s.dropItem}
-              onPress={() => {
-                setSearch('');
-                setSuggestions([]);
-                navigation.navigate('CustomerDetail', { customerId: c.id });
-              }}
+              onPress={() => { setSearch(''); navigation.navigate('CustomerDetail', { customerId: c.id }); }}
             >
               <Text style={{ fontWeight: '600' }}>{c.name}</Text>
               {c.phone ? <Text style={{ color: '#888', fontSize: 12 }}>{c.phone}</Text> : null}
@@ -158,6 +139,9 @@ const s = StyleSheet.create({
   },
   iconBtn: { marginLeft: 8, padding: 6 },
   logoutBtn: { marginLeft: 8, padding: 8 },
+  offlineBanner: {
+    backgroundColor: '#E65100', paddingVertical: 6, paddingHorizontal: 16, alignItems: 'center',
+  },
   dropdown: {
     backgroundColor: '#fff', borderBottomWidth: 1,
     borderBottomColor: '#E8F5E9', maxHeight: 220,
@@ -172,8 +156,7 @@ const s = StyleSheet.create({
   statVal: { fontSize: 18, fontWeight: 'bold' },
   tile: {
     backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center',
-    elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
-    marginBottom: 4,
+    elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, marginBottom: 4,
   },
   tileTitle: { fontWeight: 'bold', fontSize: 15, marginTop: 6 },
   tileLabel: { fontSize: 10, color: '#888', marginTop: 8 },

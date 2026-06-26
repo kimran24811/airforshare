@@ -6,6 +6,7 @@ import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth } from './src/config/firebase';
 import { RootStackParamList } from './src/navigation/types';
 import { authenticate } from './src/utils/biometric';
+import { DataProvider } from './src/context/DataContext';
 
 import LoginScreen from './src/screens/LoginScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -50,22 +51,24 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user && biometricPassed ? (
-          <>
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Category" component={CategoryScreen} />
-            <Stack.Screen name="NewEntry" component={NewEntryScreen} />
-            <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
-            <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
-            <Stack.Screen name="RecycleBin" component={RecycleBinScreen} />
-            <Stack.Screen name="Categories" component={CategoriesScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="Login" component={LoginScreen} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <DataProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          {user && biometricPassed ? (
+            <>
+              <Stack.Screen name="Home" component={HomeScreen} />
+              <Stack.Screen name="Category" component={CategoryScreen} />
+              <Stack.Screen name="NewEntry" component={NewEntryScreen} />
+              <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
+              <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
+              <Stack.Screen name="RecycleBin" component={RecycleBinScreen} />
+              <Stack.Screen name="Categories" component={CategoriesScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="Login" component={LoginScreen} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </DataProvider>
   );
 }

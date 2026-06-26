@@ -1,42 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView, Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  collection, onSnapshot, query, orderBy,
-  updateDoc, deleteDoc, doc, Timestamp,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Transaction } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { authenticate } from '../utils/biometric';
+import { useData } from '../context/DataContext';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'RecycleBin'> };
 
 export default function RecycleBinScreen({ navigation }: Props) {
-  const [deleted, setDeleted] = useState<Transaction[]>([]);
+  const { transactions, updateTransaction, permanentDeleteTransaction } = useData();
+  const deleted = transactions.filter(t => t.deleted);
 
-  useEffect(() => {
-    return onSnapshot(
-      query(collection(db, 'transactions'), orderBy('date', 'desc')),
-      snap => {
-        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
-        setDeleted(all.filter(t => t.deleted));
-      },
-    );
-  }, []);
-
-  const restore = async (t: Transaction) => {
-    try {
-      await updateDoc(doc(db, 'transactions', t.id), { deleted: false, deletedAt: null });
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
+  const restore = async (id: string) => {
+    try { await updateTransaction(id, { deleted: false, deletedAt: null } as any); }
+    catch (e: any) { Alert.alert('Error', e.message); }
   };
 
-  const permanentDelete = async (t: Transaction) => {
+  const permanentDelete = async (id: string) => {
     const ok = await authenticate('Confirm permanent delete');
     if (!ok) return;
     Alert.alert('Delete Forever', 'This cannot be undone.', [
@@ -44,7 +27,7 @@ export default function RecycleBinScreen({ navigation }: Props) {
       {
         text: 'Delete Forever', style: 'destructive',
         onPress: async () => {
-          try { await deleteDoc(doc(db, 'transactions', t.id)); }
+          try { await permanentDeleteTransaction(id); }
           catch (e: any) { Alert.alert('Error', e.message); }
         },
       },
@@ -88,13 +71,13 @@ export default function RecycleBinScreen({ navigation }: Props) {
             <View style={{ flexDirection: 'row', marginTop: 10, gap: 8 }}>
               <TouchableOpacity
                 style={[s.btn, { backgroundColor: '#2E7D32', flex: 1 }]}
-                onPress={() => restore(item)}
+                onPress={() => restore(item.id)}
               >
                 <Text style={{ color: '#fff', fontWeight: '600', textAlign: 'center' }}>↩ Restore</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.btn, { backgroundColor: '#C62828', flex: 1 }]}
-                onPress={() => permanentDelete(item)}
+                onPress={() => permanentDelete(item.id)}
               >
                 <Text style={{ color: '#fff', fontWeight: '600', textAlign: 'center' }}>🗑 Delete Forever</Text>
               </TouchableOpacity>
