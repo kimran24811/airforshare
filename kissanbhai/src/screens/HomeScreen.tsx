@@ -6,7 +6,6 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   collection, onSnapshot, query, orderBy,
-  getDocs, addDoc, Timestamp,
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../config/firebase';
@@ -16,11 +15,6 @@ import { formatCurrency } from '../utils/currency';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
 
-const DEFAULT_CATEGORIES = [
-  { name: 'pesticide', emoji: '🌿' },
-  { name: 'solar', emoji: '☀️' },
-];
-
 export default function HomeScreen({ navigation }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -29,14 +23,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [suggestions, setSuggestions] = useState<Customer[]>([]);
 
   useEffect(() => {
-    getDocs(collection(db, 'categories')).then(snap => {
-      if (snap.empty) {
-        DEFAULT_CATEGORIES.forEach(c =>
-          addDoc(collection(db, 'categories'), { ...c, createdAt: Timestamp.now() }),
-        );
-      }
-    });
-
     const unsubC = onSnapshot(
       query(collection(db, 'customers'), orderBy('name')),
       snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
