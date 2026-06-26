@@ -12,16 +12,35 @@ export interface TransactionItem {
   balance: number;
 }
 
+export interface PaymentRecord {
+  amount: number;
+  note: string;
+  date: any;
+}
+
 export interface Transaction {
   id: string;
   customerId: string;
   customerName: string;
   customerPhone: string;
-  category: 'pesticide' | 'solar';
+  category: string;
   items: TransactionItem[];
   description: string;
   totalAmount: number;
   totalPaid: number;
   totalBalance: number;
   date?: any;
+  editedAt?: any;
+  deleted?: boolean;
+  deletedAt?: any;
+  photoUrls?: string[];
+  voiceNoteUrl?: string;
+  paymentHistory?: PaymentRecord[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  emoji: string;
+  createdAt?: any;
 }

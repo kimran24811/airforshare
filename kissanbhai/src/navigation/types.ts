@@ -1,8 +1,10 @@
 export type RootStackParamList = {
   Login: undefined;
   Home: undefined;
-  Category: { category: 'pesticide' | 'solar' };
-  NewEntry: { category?: 'pesticide' | 'solar' };
+  Category: { category: string };
+  NewEntry: { category?: string; editId?: string };
   EntryDetail: { transactionId: string };
   CustomerDetail: { customerId: string };
+  RecycleBin: undefined;
+  Categories: undefined;
 };

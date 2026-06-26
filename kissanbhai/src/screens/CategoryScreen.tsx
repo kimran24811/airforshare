@@ -16,20 +16,22 @@ type Props = {
 
 export default function CategoryScreen({ navigation, route }: Props) {
   const { category } = route.params;
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     return onSnapshot(
       query(collection(db, 'transactions'), where('category', '==', category), orderBy('date', 'desc')),
-      snap => setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))),
+      snap => setAllTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))),
     );
   }, [category]);
+
+  const transactions = allTransactions.filter(t => !t.deleted);
 
   const totalSales = transactions.reduce((s, t) => s + t.totalAmount, 0);
   const totalReceived = transactions.reduce((s, t) => s + t.totalPaid, 0);
   const totalRemaining = transactions.reduce((s, t) => s + t.totalBalance, 0);
   const uniqueCustomers = new Set(transactions.map(t => t.customerId)).size;
-  const label = category === 'pesticide' ? '🌿 Pesticide' : '☀️ Solar';
+  const label = category.charAt(0).toUpperCase() + category.slice(1);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>

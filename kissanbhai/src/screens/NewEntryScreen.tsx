@@ -6,10 +6,13 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import {
+  collection, addDoc, onSnapshot, query, orderBy,
+  Timestamp, getDoc, doc, updateDoc,
+} from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Customer, TransactionItem } from '../types';
+import { Customer, TransactionItem, Category } from '../types';
 import { formatCurrency } from '../utils/currency';
 
 type Props = {
@@ -21,7 +24,11 @@ const emptyItem = (): TransactionItem => ({ name: '', price: 0, paid: 0, balance
 
 export default function NewEntryScreen({ navigation, route }: Props) {
   const presetCategory = route.params?.category;
-  const [category, setCategory] = useState<'pesticide' | 'solar' | ''>(presetCategory ?? '');
+  const editId = route.params?.editId;
+  const isEdit = !!editId;
+
+  const [category, setCategory] = useState<string>(presetCategory ?? '');
+  const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
@@ -29,13 +36,34 @@ export default function NewEntryScreen({ navigation, route }: Props) {
   const [description, setDescription] = useState('');
   const [items, setItems] = useState<TransactionItem[]>([emptyItem()]);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEdit);
 
   useEffect(() => {
-    return onSnapshot(
+    const unsubCust = onSnapshot(
       query(collection(db, 'customers'), orderBy('name')),
       snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
     );
+    const unsubCat = onSnapshot(
+      query(collection(db, 'categories'), orderBy('createdAt')),
+      snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category))),
+    );
+    return () => { unsubCust(); unsubCat(); };
   }, []);
+
+  // Pre-fill for edit mode
+  useEffect(() => {
+    if (!editId) return;
+    getDoc(doc(db, 'transactions', editId)).then(d => {
+      if (!d.exists()) return;
+      const data = d.data();
+      setCategory(data.category ?? '');
+      setCustomerSearch(data.customerName ?? '');
+      setSelectedCustomer({ id: data.customerId, name: data.customerName, phone: data.customerPhone ?? '' });
+      setDescription(data.description ?? '');
+      setItems(data.items?.length ? data.items : [emptyItem()]);
+      setLoading(false);
+    });
+  }, [editId]);
 
   useEffect(() => {
     if (!customerSearch.trim() || selectedCustomer) { setCustomerSuggestions([]); return; }
@@ -74,7 +102,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
   };
 
   const handleSave = async () => {
-    if (!category) { Alert.alert('Missing', 'Select Pesticide or Solar'); return; }
+    if (!category) { Alert.alert('Missing', 'Select a category'); return; }
     const validItems = items.filter(i => i.name.trim()).map(i => ({ ...i, balance: i.price - i.paid }));
     if (!validItems.length) { Alert.alert('Missing', 'Add at least one item with a name'); return; }
     const customer = await resolveCustomer();
@@ -82,7 +110,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
 
     setSaving(true);
     try {
-      await addDoc(collection(db, 'transactions'), {
+      const payload = {
         customerId: customer.id,
         customerName: customer.name,
         customerPhone: customer.phone,
@@ -92,15 +120,32 @@ export default function NewEntryScreen({ navigation, route }: Props) {
         totalAmount,
         totalPaid,
         totalBalance,
-        date: Timestamp.now(),
-      });
-      navigation.goBack();
+      };
+
+      if (isEdit && editId) {
+        await updateDoc(doc(db, 'transactions', editId), { ...payload, editedAt: Timestamp.now() });
+        Alert.alert('Saved', 'Entry updated successfully', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      } else {
+        await addDoc(collection(db, 'transactions'), { ...payload, date: Timestamp.now() });
+        Alert.alert('Saved', 'Entry saved successfully', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
-    } finally {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
@@ -108,7 +153,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
           <Text style={{ fontSize: 22 }}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>New Entry</Text>
+        <Text style={s.headerTitle}>{isEdit ? 'Edit Entry' : 'New Entry'}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -160,19 +205,19 @@ export default function NewEntryScreen({ navigation, route }: Props) {
             </>
           )}
 
-          {/* Category — hidden if opened from a category screen */}
+          {/* Category — hidden if preset */}
           {!presetCategory && (
             <>
               <Text style={s.label}>Category</Text>
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-                {(['pesticide', 'solar'] as const).map(cat => (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                {categories.map(cat => (
                   <TouchableOpacity
-                    key={cat}
-                    style={[s.catBtn, category === cat && s.catSelected]}
-                    onPress={() => setCategory(cat)}
+                    key={cat.id}
+                    style={[s.catBtn, category === cat.name && s.catSelected]}
+                    onPress={() => setCategory(cat.name)}
                   >
-                    <Text style={[{ fontWeight: '600' }, category === cat && { color: '#fff' }]}>
-                      {cat === 'pesticide' ? '🌿 Pesticide' : '☀️ Solar'}
+                    <Text style={[{ fontWeight: '600' }, category === cat.name && { color: '#fff' }]}>
+                      {cat.emoji} {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -199,9 +244,8 @@ export default function NewEntryScreen({ navigation, route }: Props) {
             <Text style={[s.colHead, { flex: 2 }]}>Bal ₨</Text>
           </View>
 
-          {/* Item rows */}
           {items.map((item, idx) => (
-            <View key={idx} style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+            <View key={idx} style={{ flexDirection: 'row', gap: 4, marginBottom: 8, alignItems: 'center' }}>
               <TextInput
                 style={[s.cell, { flex: 3 }]}
                 placeholder="Item"
@@ -230,6 +274,11 @@ export default function NewEntryScreen({ navigation, route }: Props) {
                   {item.balance <= 0 ? '✓' : String(Math.round(item.balance))}
                 </Text>
               </View>
+              {items.length > 1 && (
+                <TouchableOpacity onPress={() => setItems(p => p.filter((_, i) => i !== idx))}>
+                  <Text style={{ color: '#C62828', fontSize: 16, paddingHorizontal: 4 }}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ))}
 
@@ -237,24 +286,22 @@ export default function NewEntryScreen({ navigation, route }: Props) {
             <Text style={{ color: '#2E7D32', fontWeight: '600', marginBottom: 20 }}>+ Add Item</Text>
           </TouchableOpacity>
 
-          {/* Totals */}
           <View style={s.totalsCard}>
-            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>
-              Total: {formatCurrency(totalAmount)}
-            </Text>
-            <Text style={{ color: '#2E7D32', fontSize: 14, marginTop: 4 }}>
-              Paid: {formatCurrency(totalPaid)}
-            </Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Total: {formatCurrency(totalAmount)}</Text>
+            <Text style={{ color: '#2E7D32', fontSize: 14, marginTop: 4 }}>Paid: {formatCurrency(totalPaid)}</Text>
             <Text style={{ color: totalBalance > 0 ? '#C62828' : '#2E7D32', fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>
               Remaining: {formatCurrency(totalBalance)}
             </Text>
           </View>
 
-          {/* Save button */}
-          <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.7 }]} onPress={handleSave} disabled={saving}>
+          <TouchableOpacity
+            style={[s.saveBtn, saving && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={saving}
+          >
             {saving
               ? <ActivityIndicator color="#fff" />
-              : <Text style={s.saveBtnText}>Save Entry</Text>}
+              : <Text style={s.saveBtnText}>{isEdit ? 'Update Entry' : 'Save Entry'}</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -274,14 +321,17 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
     padding: 11, marginBottom: 16, fontSize: 14, backgroundColor: '#fff',
   },
-  dropdown: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10, marginTop: -12, marginBottom: 16 },
+  dropdown: {
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#C8E6C9',
+    borderRadius: 10, marginTop: -12, marginBottom: 16,
+  },
   dropItem: { padding: 11, borderBottomWidth: 1, borderBottomColor: '#F1F8E9' },
   selectedBox: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: '#E8F5E9', borderRadius: 10, padding: 12, marginBottom: 16,
   },
   catBtn: {
-    flex: 1, padding: 12, borderWidth: 1, borderColor: '#C8E6C9',
+    padding: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: '#C8E6C9',
     borderRadius: 10, alignItems: 'center', backgroundColor: '#fff',
   },
   catSelected: { backgroundColor: '#2E7D32', borderColor: '#2E7D32' },

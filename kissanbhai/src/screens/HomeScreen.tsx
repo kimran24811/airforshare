@@ -4,22 +4,39 @@ import {
   ScrollView, SafeAreaView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import {
+  collection, onSnapshot, query, orderBy,
+  getDocs, addDoc, Timestamp,
+} from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
-import { Customer, Transaction } from '../types';
+import { Customer, Transaction, Category } from '../types';
 import { formatCurrency } from '../utils/currency';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
 
+const DEFAULT_CATEGORIES = [
+  { name: 'pesticide', emoji: '🌿' },
+  { name: 'solar', emoji: '☀️' },
+];
+
 export default function HomeScreen({ navigation }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<Customer[]>([]);
 
   useEffect(() => {
+    getDocs(collection(db, 'categories')).then(snap => {
+      if (snap.empty) {
+        DEFAULT_CATEGORIES.forEach(c =>
+          addDoc(collection(db, 'categories'), { ...c, createdAt: Timestamp.now() }),
+        );
+      }
+    });
+
     const unsubC = onSnapshot(
       query(collection(db, 'customers'), orderBy('name')),
       snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
@@ -28,32 +45,38 @@ export default function HomeScreen({ navigation }: Props) {
       query(collection(db, 'transactions'), orderBy('date', 'desc')),
       snap => setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))),
     );
-    return () => { unsubC(); unsubT(); };
+    const unsubCat = onSnapshot(
+      query(collection(db, 'categories'), orderBy('createdAt')),
+      snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category))),
+    );
+    return () => { unsubC(); unsubT(); unsubCat(); };
   }, []);
 
   useEffect(() => {
     if (search.trim().length < 1) { setSuggestions([]); return; }
     const q = search.toLowerCase();
     setSuggestions(
-      customers.filter(c => c.name.toLowerCase().includes(q) || c.phone?.includes(search))
+      customers.filter(c => c.name.toLowerCase().includes(q) || c.phone?.includes(search)),
     );
   }, [search, customers]);
 
-  const total = (cat?: 'pesticide' | 'solar') => {
-    const list = cat ? transactions.filter(t => t.category === cat) : transactions;
+  const active = transactions.filter(t => !t.deleted);
+
+  const statsFor = (cat: string) => {
+    const list = active.filter(t => t.category === cat);
     return {
       sales: list.reduce((s, t) => s + t.totalAmount, 0),
       recv: list.reduce((s, t) => s + t.totalBalance, 0),
     };
   };
 
-  const overall = total();
-  const pest = total('pesticide');
-  const solar = total('solar');
+  const overall = {
+    sales: active.reduce((s, t) => s + t.totalAmount, 0),
+    recv: active.reduce((s, t) => s + t.totalBalance, 0),
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
-      {/* Search bar */}
       <View style={s.searchRow}>
         <TextInput
           style={s.searchInput}
@@ -62,12 +85,17 @@ export default function HomeScreen({ navigation }: Props) {
           value={search}
           onChangeText={setSearch}
         />
+        <TouchableOpacity style={s.iconBtn} onPress={() => navigation.navigate('RecycleBin')}>
+          <Text style={{ fontSize: 20 }}>🗑️</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.iconBtn} onPress={() => navigation.navigate('Categories')}>
+          <Text style={{ fontSize: 20 }}>⚙️</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.logoutBtn} onPress={() => signOut(auth)}>
           <Text style={{ color: '#888', fontSize: 12 }}>Logout</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Autocomplete dropdown */}
       {suggestions.length > 0 && (
         <View style={s.dropdown}>
           {suggestions.slice(0, 5).map(c => (
@@ -88,7 +116,6 @@ export default function HomeScreen({ navigation }: Props) {
       )}
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 88 }}>
-        {/* Overall stats */}
         <View style={s.card}>
           <Text style={s.cardTitle}>📊 Overall Business</Text>
           <View style={{ flexDirection: 'row', marginTop: 10 }}>
@@ -103,30 +130,30 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Category tiles */}
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          {[
-            { cat: 'pesticide' as const, emoji: '🌿', label: 'Pesticide', ...pest },
-            { cat: 'solar' as const, emoji: '☀️', label: 'Solar', ...solar },
-          ].map(({ cat, emoji, label, sales, recv }) => (
-            <TouchableOpacity
-              key={cat}
-              style={[s.tile, { flex: 1 }]}
-              onPress={() => navigation.navigate('Category', { category: cat })}
-              activeOpacity={0.8}
-            >
-              <Text style={{ fontSize: 32 }}>{emoji}</Text>
-              <Text style={s.tileTitle}>{label}</Text>
-              <Text style={s.tileLabel}>Sales</Text>
-              <Text style={[s.tileVal, { color: '#2E7D32' }]}>{formatCurrency(sales)}</Text>
-              <Text style={s.tileLabel}>Receivable</Text>
-              <Text style={[s.tileVal, { color: '#C62828' }]}>{formatCurrency(recv)}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {categories.map(cat => {
+            const { sales, recv } = statsFor(cat.name);
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[s.tile, { width: '47%' }]}
+                onPress={() => navigation.navigate('Category', { category: cat.name })}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 30 }}>{cat.emoji}</Text>
+                <Text style={s.tileTitle}>
+                  {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
+                </Text>
+                <Text style={s.tileLabel}>Sales</Text>
+                <Text style={[s.tileVal, { color: '#2E7D32' }]}>{formatCurrency(sales)}</Text>
+                <Text style={s.tileLabel}>Receivable</Text>
+                <Text style={[s.tileVal, { color: '#C62828' }]}>{formatCurrency(recv)}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
 
-      {/* FAB */}
       <TouchableOpacity style={s.fab} onPress={() => navigation.navigate('NewEntry', {})}>
         <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32 }}>+</Text>
       </TouchableOpacity>
@@ -143,8 +170,12 @@ const s = StyleSheet.create({
     flex: 1, borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
     padding: 10, fontSize: 14, backgroundColor: '#FAFAFA',
   },
-  logoutBtn: { marginLeft: 10, padding: 8 },
-  dropdown: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E8F5E9', maxHeight: 220 },
+  iconBtn: { marginLeft: 8, padding: 6 },
+  logoutBtn: { marginLeft: 8, padding: 8 },
+  dropdown: {
+    backgroundColor: '#fff', borderBottomWidth: 1,
+    borderBottomColor: '#E8F5E9', maxHeight: 220,
+  },
   dropItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#F1F8E9' },
   card: {
     backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16,
@@ -156,6 +187,7 @@ const s = StyleSheet.create({
   tile: {
     backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center',
     elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
+    marginBottom: 4,
   },
   tileTitle: { fontWeight: 'bold', fontSize: 15, marginTop: 6 },
   tileLabel: { fontSize: 10, color: '#888', marginTop: 8 },
