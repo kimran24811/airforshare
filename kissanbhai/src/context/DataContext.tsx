@@ -46,8 +46,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, 'transactions'), orderBy('date', 'desc')),
       snap => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
-        setTransactions(data);
-        if (!snap.metadata.fromCache) saveCache('transactions', data);
+        if (!snap.metadata.fromCache) {
+          setTransactions(data);
+          saveCache('transactions', data);
+        } else if (data.length > 0) {
+          setTransactions(data);
+        }
+        // fromCache + empty → Firestore has no disk cache, keep AsyncStorage data intact
       },
       () => {},
     );
@@ -55,8 +60,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, 'customers'), orderBy('name')),
       snap => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
-        setCustomers(data);
-        if (!snap.metadata.fromCache) saveCache('customers', data);
+        if (!snap.metadata.fromCache) {
+          setCustomers(data);
+          saveCache('customers', data);
+        } else if (data.length > 0) {
+          setCustomers(data);
+        }
       },
       () => {},
     );
@@ -64,8 +73,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, 'categories'), orderBy('createdAt')),
       snap => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-        setCategories(data);
-        if (!snap.metadata.fromCache) saveCache('categories', data);
+        if (!snap.metadata.fromCache) {
+          setCategories(data);
+          saveCache('categories', data);
+        } else if (data.length > 0) {
+          setCategories(data);
+        }
       },
       () => {},
     );
@@ -90,12 +103,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await addDoc(collection(db, 'transactions'), { ...data, date: Timestamp.now() });
     } else {
       await enqueue({ type: 'add', col: 'transactions', data: { ...data, date: Timestamp.now() } });
-      // Optimistic local state
       const fake: Transaction = {
         ...data, id: `tmp_${Date.now()}`,
         date: { seconds: Date.now() / 1000, nanoseconds: 0, toDate: () => new Date() } as any,
       };
-      setTransactions(prev => [fake, ...prev]);
+      setTransactions(prev => {
+        const next = [fake, ...prev];
+        saveCache('transactions', next);
+        return next;
+      });
       setPendingCount(p => p + 1);
     }
   };
@@ -105,7 +121,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await updateDoc(doc(db, 'transactions', id), data as any);
     } else {
       await enqueue({ type: 'update', col: 'transactions', docId: id, data });
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+      setTransactions(prev => {
+        const next = prev.map(t => t.id === id ? { ...t, ...data } : t);
+        saveCache('transactions', next);
+        return next;
+      });
       setPendingCount(p => p + 1);
     }
   };
@@ -115,7 +135,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       await deleteDoc(doc(db, 'transactions', id));
     } else {
       await enqueue({ type: 'delete', col: 'transactions', docId: id });
-      setTransactions(prev => prev.filter(t => t.id !== id));
+      setTransactions(prev => {
+        const next = prev.filter(t => t.id !== id);
+        saveCache('transactions', next);
+        return next;
+      });
     }
   };
 
@@ -127,7 +151,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const tmpId = `tmp_${name.replace(/\s+/g, '_')}_${Date.now()}`;
       await enqueue({ type: 'add', col: 'customers', data: { name, phone, createdAt: Timestamp.now() } });
       const cust: Customer = { id: tmpId, name, phone };
-      setCustomers(prev => [...prev, cust].sort((a, b) => a.name.localeCompare(b.name)));
+      setCustomers(prev => {
+        const next = [...prev, cust].sort((a, b) => a.name.localeCompare(b.name));
+        saveCache('customers', next);
+        return next;
+      });
       setPendingCount(p => p + 1);
       return cust;
     }
