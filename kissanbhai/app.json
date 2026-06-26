@@ -17,6 +17,11 @@
         "backgroundColor": "#2E7D32"
       },
       "package": "com.kissanbhai.app"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b036c783-cabc-4002-8ce1-17d92e0b0d5a"
+      }
     }
   }
 }
