@@ -86,7 +86,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
       <FlatList
         data={transactions}
         keyExtractor={t => t.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: '#aaa', marginTop: 64 }}>No transactions yet.</Text>
         }
@@ -97,6 +97,16 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
           />
         )}
       />
+
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => navigation.navigate('NewEntry', {
+          customerId: customerId,
+          customerName: customer?.name,
+        })}
+      >
+        <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32 }}>+</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -111,5 +121,10 @@ const s = StyleSheet.create({
   statsCard: {
     backgroundColor: '#fff', padding: 16, margin: 16, borderRadius: 14,
     elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
+  },
+  fab: {
+    position: 'absolute', bottom: 24, right: 24,
+    backgroundColor: '#2E7D32', width: 58, height: 58, borderRadius: 29,
+    justifyContent: 'center', alignItems: 'center', elevation: 6,
   },
 });

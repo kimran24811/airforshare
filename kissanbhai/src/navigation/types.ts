@@ -2,7 +2,7 @@ export type RootStackParamList = {
   Login: undefined;
   Home: undefined;
   Category: { category: string };
-  NewEntry: { category?: string; editId?: string };
+  NewEntry: { category?: string; editId?: string; customerId?: string; customerName?: string };
   EntryDetail: { transactionId: string };
   CustomerDetail: { customerId: string };
   RecycleBin: undefined;

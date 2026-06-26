@@ -25,14 +25,20 @@ const emptyItem = (): TransactionItem => ({ name: '', price: 0, paid: 0, balance
 export default function NewEntryScreen({ navigation, route }: Props) {
   const presetCategory = route.params?.category;
   const editId = route.params?.editId;
+  const presetCustomerId = route.params?.customerId;
+  const presetCustomerName = route.params?.customerName;
   const isEdit = !!editId;
+
+  const presetCustomer = presetCustomerId && presetCustomerName
+    ? { id: presetCustomerId, name: presetCustomerName, phone: '' }
+    : null;
 
   const [category, setCategory] = useState<string>(presetCategory ?? '');
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState(presetCustomerName ?? '');
   const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(presetCustomer);
   const [description, setDescription] = useState('');
   const [items, setItems] = useState<TransactionItem[]>([emptyItem()]);
   const [saving, setSaving] = useState(false);

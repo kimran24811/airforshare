@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { Transaction, Customer } from '../types';
 import { formatCurrency } from './currency';
 
@@ -67,8 +68,10 @@ export async function generateEntryPdf(txn: Transaction): Promise<void> {
       ` : ''}
     </body></html>
   `;
-  const { uri } = await Print.printToFileAsync({ html, base: makeFilename(txn.customerName) });
-  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+  const { uri } = await Print.printToFileAsync({ html });
+  const dest = (FileSystem.cacheDirectory ?? '') + makeFilename(txn.customerName) + '.pdf';
+  await FileSystem.moveAsync({ from: uri, to: dest });
+  await Sharing.shareAsync(dest, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }
 
 export async function generateCustomerPdf(customer: Customer, transactions: Transaction[]): Promise<void> {
@@ -111,6 +114,8 @@ export async function generateCustomerPdf(customer: Customer, transactions: Tran
       </table>
     </body></html>
   `;
-  const { uri } = await Print.printToFileAsync({ html, base: makeFilename(customer.name) });
-  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+  const { uri } = await Print.printToFileAsync({ html });
+  const dest = (FileSystem.cacheDirectory ?? '') + makeFilename(customer.name) + '.pdf';
+  await FileSystem.moveAsync({ from: uri, to: dest });
+  await Sharing.shareAsync(dest, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }
