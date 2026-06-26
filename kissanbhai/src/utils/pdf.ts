@@ -7,6 +7,17 @@ function dateStr(ts: any): string {
   return ts?.toDate?.()?.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) ?? '';
 }
 
+function makeFilename(customerName: string): string {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.getMonth()];
+  const yyyy = now.getFullYear();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const safeName = customerName.replace(/[^\w\s]/g, '').trim().replace(/\s+/g, '_');
+  return `${safeName}_${dd}-${mon}-${yyyy}_${hh}${mm}`;
+}
+
 export async function generateEntryPdf(txn: Transaction): Promise<void> {
   const itemRows = txn.items.map((item, i) => `
     <tr>
@@ -56,7 +67,7 @@ export async function generateEntryPdf(txn: Transaction): Promise<void> {
       ` : ''}
     </body></html>
   `;
-  const { uri } = await Print.printToFileAsync({ html });
+  const { uri } = await Print.printToFileAsync({ html, base: makeFilename(txn.customerName) });
   await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }
 
@@ -100,6 +111,6 @@ export async function generateCustomerPdf(customer: Customer, transactions: Tran
       </table>
     </body></html>
   `;
-  const { uri } = await Print.printToFileAsync({ html });
+  const { uri } = await Print.printToFileAsync({ html, base: makeFilename(customer.name) });
   await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }
