@@ -9,7 +9,7 @@ import { RootStackParamList } from '../navigation/types';
 import { formatCurrency } from '../utils/currency';
 import { generateCustomerPdf } from '../utils/pdf';
 import { useData } from '../context/DataContext';
-import TransactionCard from '../components/TransactionCard';
+import { Transaction } from '../types';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CustomerDetail'>;
@@ -17,7 +17,7 @@ type Props = {
 };
 
 export default function CustomerDetailScreen({ navigation, route }: Props) {
-  const { customerId } = route.params;
+  const { customerId, category } = route.params;
   const { transactions, customers } = useData();
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -76,23 +76,48 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
         keyExtractor={t => t.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', color: '#aaa', marginTop: 64 }}>No transactions yet.</Text>
+          <Text style={{ textAlign: 'center', color: '#aaa', marginTop: 64 }}>
+            No entries yet.{'\n'}Tap + to add one.
+          </Text>
         }
-        renderItem={({ item }) => (
-          <TransactionCard
-            transaction={item}
-            onPress={() => navigation.navigate('EntryDetail', { transactionId: item.id })}
-          />
-        )}
+        renderItem={({ item }) => <EntryCard txn={item} onPress={() => navigation.navigate('EntryDetail', { transactionId: item.id })} />}
       />
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => navigation.navigate('NewEntry', { customerId, customerName: customer?.name })}
+        onPress={() => navigation.navigate('NewEntry', {
+          customerId,
+          customerName: customer?.name,
+          category,
+          quickMode: true,
+        })}
       >
         <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32 }}>+</Text>
       </TouchableOpacity>
     </SafeAreaView>
+  );
+}
+
+function EntryCard({ txn: t, onPress }: { txn: Transaction; onPress: () => void }) {
+  const settled = t.totalBalance <= 0;
+  const dateStr = t.date?.toDate?.()?.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) ?? '';
+  return (
+    <TouchableOpacity style={s.entryCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={s.entryAmount}>{formatCurrency(t.totalAmount)}</Text>
+        <Text style={{ color: '#888', fontSize: 12 }}>{dateStr}</Text>
+      </View>
+      <Text style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+        {t.items.length} item{t.items.length !== 1 ? 's' : ''}
+        {t.items.length > 0 && t.items[0].name ? `  •  ${t.items.map(i => i.name).join(', ')}` : ''}
+      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, alignItems: 'center' }}>
+        <Text style={{ color: '#2E7D32', fontSize: 13 }}>Paid: {formatCurrency(t.totalPaid)}</Text>
+        <Text style={{ fontWeight: 'bold', fontSize: 14, color: settled ? '#2E7D32' : '#C62828' }}>
+          {settled ? '✓ Settled' : `${formatCurrency(t.totalBalance)} due`}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -107,6 +132,11 @@ const s = StyleSheet.create({
     backgroundColor: '#fff', padding: 16, margin: 16, borderRadius: 14,
     elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
   },
+  entryCard: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10,
+    elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
+  },
+  entryAmount: { fontSize: 18, fontWeight: 'bold', color: '#1a1a1a' },
   fab: {
     position: 'absolute', bottom: 24, right: 24,
     backgroundColor: '#2E7D32', width: 58, height: 58, borderRadius: 29,

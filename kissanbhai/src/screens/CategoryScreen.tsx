@@ -1,5 +1,8 @@
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView,
+  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
@@ -23,7 +26,11 @@ type CustomerGroup = {
 
 export default function CategoryScreen({ navigation, route }: Props) {
   const { category } = route.params;
-  const { transactions } = useData();
+  const { transactions, customers, addCustomer } = useData();
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
 
   const filtered = transactions.filter(t => !t.deleted && t.category === category);
 
@@ -43,12 +50,31 @@ export default function CategoryScreen({ navigation, route }: Props) {
       });
     }
   }
+
+  // Also include customers with no transactions yet (just added via modal)
+  for (const c of customers) {
+    if (!customerMap.has(c.id)) {
+      // don't show them in this category list unless they have entries
+    }
+  }
+
   const groups = Array.from(customerMap.values());
 
   const totalSales     = filtered.reduce((s, t) => s + t.totalAmount, 0);
   const totalReceived  = filtered.reduce((s, t) => s + t.totalPaid, 0);
   const totalRemaining = filtered.reduce((s, t) => s + t.totalBalance, 0);
   const label = category.charAt(0).toUpperCase() + category.slice(1);
+
+  const handleAddCustomer = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setAdding(true);
+    const customer = await addCustomer(name, '');
+    setAdding(false);
+    setModalVisible(false);
+    setNewName('');
+    navigation.navigate('CustomerDetail', { customerId: customer.id, category });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
@@ -75,7 +101,7 @@ export default function CategoryScreen({ navigation, route }: Props) {
         data={groups}
         keyExtractor={g => g.customerId}
         contentContainerStyle={{ padding: 16, paddingBottom: 88 }}
-        ListEmptyComponent={<Text style={s.empty}>No entries yet.{'\n'}Tap + to add one.</Text>}
+        ListEmptyComponent={<Text style={s.empty}>No customers yet.{'\n'}Tap + to add one.</Text>}
         renderItem={({ item }) => {
           const settled = item.totalBalance <= 0;
           const dateStr = item.lastDate?.toDate?.()?.toLocaleDateString(
@@ -84,7 +110,7 @@ export default function CategoryScreen({ navigation, route }: Props) {
           return (
             <TouchableOpacity
               style={s.card}
-              onPress={() => navigation.navigate('CustomerDetail', { customerId: item.customerId })}
+              onPress={() => navigation.navigate('CustomerDetail', { customerId: item.customerId, category })}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Text style={s.customerName}>{item.customerName}</Text>
@@ -104,9 +130,53 @@ export default function CategoryScreen({ navigation, route }: Props) {
         }}
       />
 
-      <TouchableOpacity style={s.fab} onPress={() => navigation.navigate('NewEntry', { category })}>
+      <TouchableOpacity style={s.fab} onPress={() => setModalVisible(true)}>
         <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32 }}>+</Text>
       </TouchableOpacity>
+
+      {/* Customer name modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setModalVisible(false); setNewName(''); }}
+      >
+        <KeyboardAvoidingView
+          style={s.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>New Customer</Text>
+            <TextInput
+              style={s.modalInput}
+              placeholder="Customer name"
+              placeholderTextColor="#999"
+              value={newName}
+              onChangeText={setNewName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleAddCustomer}
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <TouchableOpacity
+                style={[s.modalBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#C8E6C9' }]}
+                onPress={() => { setModalVisible(false); setNewName(''); }}
+              >
+                <Text style={{ color: '#333', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modalBtn, { flex: 1.5, backgroundColor: '#2E7D32' }, adding && { opacity: 0.7 }]}
+                onPress={handleAddCustomer}
+                disabled={adding}
+              >
+                {adding
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -142,5 +212,21 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 24, right: 24,
     backgroundColor: '#2E7D32', width: 58, height: 58, borderRadius: 29,
     justifyContent: 'center', alignItems: 'center', elevation: 6,
+  },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32,
+  },
+  modalCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '100%',
+    elevation: 8,
+  },
+  modalTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 16 },
+  modalInput: {
+    borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
+    padding: 12, fontSize: 15, marginBottom: 12,
+  },
+  modalBtn: {
+    flex: 1, borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center',
   },
 });

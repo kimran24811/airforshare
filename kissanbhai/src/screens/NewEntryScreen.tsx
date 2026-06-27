@@ -23,10 +23,11 @@ const emptyItem = (): TransactionItem => ({ name: '', price: 0, paid: 0, balance
 export default function NewEntryScreen({ navigation, route }: Props) {
   const { customers, categories, addTransaction, addCustomer } = useData();
 
-  const presetCategory   = route.params?.category;
-  const editId           = route.params?.editId;
-  const presetCustomerId = route.params?.customerId;
+  const presetCategory    = route.params?.category;
+  const editId            = route.params?.editId;
+  const presetCustomerId  = route.params?.customerId;
   const presetCustomerName = route.params?.customerName;
+  const quickMode         = route.params?.quickMode ?? false;
   const isEdit = !!editId;
 
   const presetCustomer = presetCustomerId && presetCustomerName
@@ -42,7 +43,6 @@ export default function NewEntryScreen({ navigation, route }: Props) {
   const [saving,              setSaving]              = useState(false);
   const [loading,             setLoading]             = useState(isEdit);
 
-  // Pre-fill for edit mode
   useEffect(() => {
     if (!editId) return;
     getDoc(doc(db, 'transactions', editId)).then(d => {
@@ -57,12 +57,12 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     });
   }, [editId]);
 
-  // Customer suggestions
   useEffect(() => {
+    if (quickMode) return;
     if (!customerSearch.trim() || selectedCustomer) { setCustomerSuggestions([]); return; }
     const lower = customerSearch.toLowerCase();
     setCustomerSuggestions(customers.filter(c => c.name.toLowerCase().includes(lower)));
-  }, [customerSearch, customers, selectedCustomer]);
+  }, [customerSearch, customers, selectedCustomer, quickMode]);
 
   const updateItem = (idx: number, field: 'name' | 'price' | 'paid', raw: string) => {
     setItems(prev => {
@@ -94,7 +94,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
   };
 
   const handleSave = async () => {
-    if (!category) { Alert.alert('Missing', 'Select a category'); return; }
+    if (!quickMode && !category) { Alert.alert('Missing', 'Select a category'); return; }
     const validItems = items.filter(i => i.name.trim()).map(i => ({ ...i, balance: i.price - i.paid }));
     if (!validItems.length) { Alert.alert('Missing', 'Add at least one item with a name'); return; }
     const customer = await resolveCustomer();
@@ -106,7 +106,7 @@ export default function NewEntryScreen({ navigation, route }: Props) {
         customerId:    customer.id,
         customerName:  customer.name,
         customerPhone: customer.phone,
-        category,
+        category:      category || 'general',
         items: validItems,
         description,
         totalAmount,
@@ -139,13 +139,19 @@ export default function NewEntryScreen({ navigation, route }: Props) {
     );
   }
 
+  const headerTitle = isEdit
+    ? 'Edit Entry'
+    : quickMode && selectedCustomer
+      ? selectedCustomer.name
+      : 'New Entry';
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
           <Text style={{ fontSize: 22 }}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{isEdit ? 'Edit Entry' : 'New Entry'}</Text>
+        <Text style={s.headerTitle} numberOfLines={1}>{headerTitle}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -154,147 +160,225 @@ export default function NewEntryScreen({ navigation, route }: Props) {
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Customer */}
-          <Text style={s.label}>Customer</Text>
-          {selectedCustomer ? (
-            <View style={s.selectedBox}>
-              <Text style={{ fontWeight: '600', flex: 1 }}>{selectedCustomer.name}</Text>
-              <TouchableOpacity onPress={() => { setSelectedCustomer(null); setCustomerSearch(''); }}>
-                <Text style={{ color: '#C62828', fontSize: 16 }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
+          {quickMode ? (
+            /* ─── Quick mode: items only ─── */
             <>
-              <TextInput
-                style={s.input}
-                placeholder="Type name to search or add…"
-                placeholderTextColor="#999"
-                value={customerSearch}
-                onChangeText={setCustomerSearch}
-              />
-              {customerSuggestions.length > 0 && (
-                <View style={s.dropdown}>
-                  {customerSuggestions.slice(0, 5).map(c => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={s.dropItem}
-                      onPress={() => { setSelectedCustomer(c); setCustomerSearch(c.name); setCustomerSuggestions([]); }}
-                    >
-                      <Text>{c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  {customerSearch.trim() &&
-                    !customers.find(c => c.name.toLowerCase() === customerSearch.toLowerCase()) && (
-                      <TouchableOpacity
-                        style={[s.dropItem, { backgroundColor: '#F1F8E9' }]}
-                        onPress={() => setCustomerSuggestions([])}
-                      >
-                        <Text style={{ color: '#2E7D32' }}>➕ Add "{customerSearch.trim()}" as new customer</Text>
-                      </TouchableOpacity>
-                    )}
-                </View>
-              )}
-            </>
-          )}
-
-          {/* Category */}
-          {!presetCategory && (
-            <>
-              <Text style={s.label}>Category</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[s.catBtn, category === cat.name && s.catSelected]}
-                    onPress={() => setCategory(cat.name)}
-                  >
-                    <Text style={[{ fontWeight: '600' }, category === cat.name && { color: '#fff' }]}>
-                      {cat.emoji} {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+                <Text style={[s.colHead, { flex: 3 }]}>Item Name</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Price ₨</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Paid ₨</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Bal ₨</Text>
               </View>
-            </>
-          )}
 
-          {/* Description */}
-          <Text style={s.label}>Description (optional)</Text>
-          <TextInput
-            style={[s.input, { height: 56, textAlignVertical: 'top' }]}
-            placeholder="e.g. wheat season spray…"
-            placeholderTextColor="#999"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-          />
+              {items.map((item, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', gap: 4, marginBottom: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[s.cell, { flex: 3 }]}
+                    placeholder="Item"
+                    placeholderTextColor="#bbb"
+                    value={item.name}
+                    onChangeText={v => updateItem(idx, 'name', v)}
+                  />
+                  <TextInput
+                    style={[s.cell, { flex: 2 }]}
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    keyboardType="decimal-pad"
+                    value={item.price > 0 ? String(item.price) : ''}
+                    onChangeText={v => updateItem(idx, 'price', v)}
+                  />
+                  <TextInput
+                    style={[s.cell, { flex: 2 }]}
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    keyboardType="decimal-pad"
+                    value={item.paid > 0 ? String(item.paid) : ''}
+                    onChangeText={v => updateItem(idx, 'paid', v)}
+                  />
+                  <View style={[s.balCell, { flex: 2 }]}>
+                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: item.balance > 0 ? '#C62828' : '#2E7D32' }}>
+                      {item.balance <= 0 ? '✓' : String(Math.round(item.balance))}
+                    </Text>
+                  </View>
+                  {items.length > 1 && (
+                    <TouchableOpacity onPress={() => setItems(p => p.filter((_, i) => i !== idx))}>
+                      <Text style={{ color: '#C62828', fontSize: 16, paddingHorizontal: 4 }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
 
-          {/* Items */}
-          <View style={{ flexDirection: 'row', marginBottom: 6 }}>
-            <Text style={[s.colHead, { flex: 3 }]}>Item Name</Text>
-            <Text style={[s.colHead, { flex: 2 }]}>Price ₨</Text>
-            <Text style={[s.colHead, { flex: 2 }]}>Paid ₨</Text>
-            <Text style={[s.colHead, { flex: 2 }]}>Bal ₨</Text>
-          </View>
+              <TouchableOpacity
+                style={s.addItemBtn}
+                onPress={() => setItems(p => [...p, emptyItem()])}
+              >
+                <Text style={{ color: '#2E7D32', fontWeight: 'bold', fontSize: 15 }}>+ Add Item</Text>
+              </TouchableOpacity>
 
-          {items.map((item, idx) => (
-            <View key={idx} style={{ flexDirection: 'row', gap: 4, marginBottom: 8, alignItems: 'center' }}>
-              <TextInput
-                style={[s.cell, { flex: 3 }]}
-                placeholder="Item"
-                placeholderTextColor="#bbb"
-                value={item.name}
-                onChangeText={v => updateItem(idx, 'name', v)}
-              />
-              <TextInput
-                style={[s.cell, { flex: 2 }]}
-                placeholder="0"
-                placeholderTextColor="#bbb"
-                keyboardType="decimal-pad"
-                value={item.price > 0 ? String(item.price) : ''}
-                onChangeText={v => updateItem(idx, 'price', v)}
-              />
-              <TextInput
-                style={[s.cell, { flex: 2 }]}
-                placeholder="0"
-                placeholderTextColor="#bbb"
-                keyboardType="decimal-pad"
-                value={item.paid > 0 ? String(item.paid) : ''}
-                onChangeText={v => updateItem(idx, 'paid', v)}
-              />
-              <View style={[s.balCell, { flex: 2 }]}>
-                <Text style={{ fontSize: 11, fontWeight: 'bold', color: item.balance > 0 ? '#C62828' : '#2E7D32' }}>
-                  {item.balance <= 0 ? '✓' : String(Math.round(item.balance))}
+              <View style={s.totalsCard}>
+                <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Total: {formatCurrency(totalAmount)}</Text>
+                <Text style={{ color: '#2E7D32', fontSize: 14, marginTop: 4 }}>Paid: {formatCurrency(totalPaid)}</Text>
+                <Text style={{ color: totalBalance > 0 ? '#C62828' : '#2E7D32', fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>
+                  Remaining: {formatCurrency(totalBalance)}
                 </Text>
               </View>
-              {items.length > 1 && (
-                <TouchableOpacity onPress={() => setItems(p => p.filter((_, i) => i !== idx))}>
-                  <Text style={{ color: '#C62828', fontSize: 16, paddingHorizontal: 4 }}>✕</Text>
-                </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.saveBtn, saving && { opacity: 0.7 }]}
+                onPress={handleSave}
+                disabled={saving}
+              >
+                {saving
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={s.saveBtnText}>Save Entry</Text>}
+              </TouchableOpacity>
+            </>
+          ) : (
+            /* ─── Full mode ─── */
+            <>
+              {/* Customer */}
+              <Text style={s.label}>Customer</Text>
+              {selectedCustomer ? (
+                <View style={s.selectedBox}>
+                  <Text style={{ fontWeight: '600', flex: 1 }}>{selectedCustomer.name}</Text>
+                  <TouchableOpacity onPress={() => { setSelectedCustomer(null); setCustomerSearch(''); }}>
+                    <Text style={{ color: '#C62828', fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={s.input}
+                    placeholder="Type name to search or add…"
+                    placeholderTextColor="#999"
+                    value={customerSearch}
+                    onChangeText={setCustomerSearch}
+                  />
+                  {customerSuggestions.length > 0 && (
+                    <View style={s.dropdown}>
+                      {customerSuggestions.slice(0, 5).map(c => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={s.dropItem}
+                          onPress={() => { setSelectedCustomer(c); setCustomerSearch(c.name); setCustomerSuggestions([]); }}
+                        >
+                          <Text>{c.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      {customerSearch.trim() &&
+                        !customers.find(c => c.name.toLowerCase() === customerSearch.toLowerCase()) && (
+                          <TouchableOpacity
+                            style={[s.dropItem, { backgroundColor: '#F1F8E9' }]}
+                            onPress={() => setCustomerSuggestions([])}
+                          >
+                            <Text style={{ color: '#2E7D32' }}>➕ Add "{customerSearch.trim()}" as new customer</Text>
+                          </TouchableOpacity>
+                        )}
+                    </View>
+                  )}
+                </>
               )}
-            </View>
-          ))}
 
-          <TouchableOpacity onPress={() => setItems(p => [...p, emptyItem()])}>
-            <Text style={{ color: '#2E7D32', fontWeight: '600', marginBottom: 20 }}>+ Add Item</Text>
-          </TouchableOpacity>
+              {/* Category */}
+              {!presetCategory && (
+                <>
+                  <Text style={s.label}>Category</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                    {categories.map(cat => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[s.catBtn, category === cat.name && s.catSelected]}
+                        onPress={() => setCategory(cat.name)}
+                      >
+                        <Text style={[{ fontWeight: '600' }, category === cat.name && { color: '#fff' }]}>
+                          {cat.emoji} {cat.name.charAt(0).toUpperCase() + cat.name.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
-          <View style={s.totalsCard}>
-            <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Total: {formatCurrency(totalAmount)}</Text>
-            <Text style={{ color: '#2E7D32', fontSize: 14, marginTop: 4 }}>Paid: {formatCurrency(totalPaid)}</Text>
-            <Text style={{ color: totalBalance > 0 ? '#C62828' : '#2E7D32', fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>
-              Remaining: {formatCurrency(totalBalance)}
-            </Text>
-          </View>
+              {/* Description */}
+              <Text style={s.label}>Description (optional)</Text>
+              <TextInput
+                style={[s.input, { height: 56, textAlignVertical: 'top' }]}
+                placeholder="e.g. wheat season spray…"
+                placeholderTextColor="#999"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+              />
 
-          <TouchableOpacity
-            style={[s.saveBtn, saving && { opacity: 0.7 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            {saving
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={s.saveBtnText}>{isEdit ? 'Update Entry' : 'Save Entry'}</Text>}
-          </TouchableOpacity>
+              {/* Items */}
+              <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+                <Text style={[s.colHead, { flex: 3 }]}>Item Name</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Price ₨</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Paid ₨</Text>
+                <Text style={[s.colHead, { flex: 2 }]}>Bal ₨</Text>
+              </View>
+
+              {items.map((item, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', gap: 4, marginBottom: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[s.cell, { flex: 3 }]}
+                    placeholder="Item"
+                    placeholderTextColor="#bbb"
+                    value={item.name}
+                    onChangeText={v => updateItem(idx, 'name', v)}
+                  />
+                  <TextInput
+                    style={[s.cell, { flex: 2 }]}
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    keyboardType="decimal-pad"
+                    value={item.price > 0 ? String(item.price) : ''}
+                    onChangeText={v => updateItem(idx, 'price', v)}
+                  />
+                  <TextInput
+                    style={[s.cell, { flex: 2 }]}
+                    placeholder="0"
+                    placeholderTextColor="#bbb"
+                    keyboardType="decimal-pad"
+                    value={item.paid > 0 ? String(item.paid) : ''}
+                    onChangeText={v => updateItem(idx, 'paid', v)}
+                  />
+                  <View style={[s.balCell, { flex: 2 }]}>
+                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: item.balance > 0 ? '#C62828' : '#2E7D32' }}>
+                      {item.balance <= 0 ? '✓' : String(Math.round(item.balance))}
+                    </Text>
+                  </View>
+                  {items.length > 1 && (
+                    <TouchableOpacity onPress={() => setItems(p => p.filter((_, i) => i !== idx))}>
+                      <Text style={{ color: '#C62828', fontSize: 16, paddingHorizontal: 4 }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+              <TouchableOpacity onPress={() => setItems(p => [...p, emptyItem()])}>
+                <Text style={{ color: '#2E7D32', fontWeight: '600', marginBottom: 20 }}>+ Add Item</Text>
+              </TouchableOpacity>
+
+              <View style={s.totalsCard}>
+                <Text style={{ fontWeight: 'bold', fontSize: 15 }}>Total: {formatCurrency(totalAmount)}</Text>
+                <Text style={{ color: '#2E7D32', fontSize: 14, marginTop: 4 }}>Paid: {formatCurrency(totalPaid)}</Text>
+                <Text style={{ color: totalBalance > 0 ? '#C62828' : '#2E7D32', fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>
+                  Remaining: {formatCurrency(totalBalance)}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[s.saveBtn, saving && { opacity: 0.7 }]}
+                onPress={handleSave}
+                disabled={saving}
+              >
+                {saving
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={s.saveBtnText}>{isEdit ? 'Update Entry' : 'Save Entry'}</Text>}
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -307,7 +391,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E8F5E9',
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', flex: 1, textAlign: 'center' },
   label: { fontWeight: '600', marginBottom: 6, color: '#333' },
   input: {
     borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
@@ -333,6 +417,10 @@ const s = StyleSheet.create({
     padding: 7, fontSize: 12, backgroundColor: '#fff', textAlign: 'center',
   },
   balCell: { justifyContent: 'center', alignItems: 'center' },
+  addItemBtn: {
+    backgroundColor: '#F1F8E9', borderRadius: 10, padding: 14,
+    alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#C8E6C9',
+  },
   totalsCard: {
     backgroundColor: '#fff', borderRadius: 12, padding: 16,
     marginBottom: 16, borderWidth: 1, borderColor: '#C8E6C9',
