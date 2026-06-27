@@ -9,6 +9,7 @@ const K = {
   transactions: 'kb_transactions',
   customers:    'kb_customers',
   categories:   'kb_categories',
+  payments:     'kb_payments',
   pending:      'kb_pending',
 };
 

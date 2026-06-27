@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -19,31 +19,54 @@ import CategoriesScreen from './src/screens/CategoriesScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function App() {
+// ── Error boundary catches JS crashes and shows a readable message ────────────
+interface EBState { error: Error | null }
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, EBState> {
+  state: EBState = { error: null };
+  static getDerivedStateFromError(e: Error) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#fff' }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#C62828', marginBottom: 12 }}>
+            Something went wrong
+          </Text>
+          <Text style={{ color: '#555', fontSize: 13, textAlign: 'center', marginBottom: 24 }}>
+            {this.state.error.message}
+          </Text>
+          <TouchableOpacity
+            onPress={() => this.setState({ error: null })}
+            style={{ backgroundColor: '#2E7D32', borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ── Main app ──────────────────────────────────────────────────────────────────
+function Main() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [biometricPassed, setBiometricPassed] = useState(false);
-  // Prevents biometric from firing twice when onAuthStateChanged re-fires
-  // during the biometric prompt (common on Android due to activity lifecycle).
   const authHandled = React.useRef(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async u => {
       if (u) {
         if (authHandled.current) {
-          // Already passed biometric this session — just keep user alive
           setUser(u);
           setBiometricPassed(true);
           return;
         }
-        authHandled.current = true; // lock before showing prompt
+        authHandled.current = true;
         const ok = await authenticate('Verify your identity to open KissanBhai');
         if (ok) {
           setUser(u);
           setBiometricPassed(true);
         } else {
-          // Biometric cancelled/failed — return to login.
-          // Don't await signOut here; awaiting it triggers onAuthStateChanged
-          // again before authHandled resets, causing a second biometric prompt.
           authHandled.current = false;
           setUser(null);
           setBiometricPassed(false);
@@ -85,5 +108,13 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
     </DataProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <Main />
+    </ErrorBoundary>
   );
 }
