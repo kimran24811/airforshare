@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   SafeAreaView, Alert, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform,
+  Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -35,6 +35,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
   const [payAmount,   setPayAmount]   = useState('');
   const [payNote,     setPayNote]     = useState('');
   const [payingSaving, setPayingSaving] = useState(false);
+  const [search, setSearch] = useState('');
 
   const customer = customers.find(c => c.id === customerId) ?? null;
   const txns = transactions.filter(t => !t.deleted && t.customerId === customerId);
@@ -46,10 +47,28 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
   const totalOutstanding = Math.max(0, totalRawBalance - totalPaidDirect);
   const fullySettled     = totalOutstanding <= 0;
 
-  const combined: ListItem[] = [
+  const allCombined: ListItem[] = [
     ...txns.map(t => ({ type: 'sale' as const, data: t })),
     ...custPayments.map(p => ({ type: 'payment' as const, data: p })),
   ].sort((a, b) => getTimestamp(b) - getTimestamp(a));
+
+  const combined = search.trim()
+    ? allCombined.filter(item => {
+        const q = search.toLowerCase();
+        if (item.type === 'sale') {
+          const t = item.data;
+          return (
+            t.items.some(i => i.name.toLowerCase().includes(q)) ||
+            String(t.totalAmount).includes(q) ||
+            (t.description ?? '').toLowerCase().includes(q)
+          );
+        }
+        return (
+          item.data.note.toLowerCase().includes(q) ||
+          String(item.data.amount).includes(q)
+        );
+      })
+    : allCombined;
 
   const handlePayment = async () => {
     const amount = parseFloat(payAmount);
@@ -103,6 +122,21 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
         keyExtractor={item => item.type === 'sale' ? `s_${item.data.id}` : `p_${item.data.id}`}
         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
         ListHeaderComponent={
+          <>
+          <View style={s.searchRow}>
+            <TextInput
+              style={s.searchInput}
+              placeholder="🔍 Search entries…"
+              placeholderTextColor="#999"
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 8 }}>
+                <Text style={{ color: '#888', fontSize: 16 }}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={s.statsCard}>
             <View style={{ flexDirection: 'row' }}>
               <View style={{ flex: 1 }}>
@@ -131,6 +165,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
               </Text>
             </TouchableOpacity>
           </View>
+          </>
         }
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: '#aaa', marginTop: 40 }}>
@@ -273,6 +308,16 @@ const s = StyleSheet.create({
   statsCard: {
     backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16,
     elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
+  },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: '#E8F5E9', marginBottom: 16,
+    borderRadius: 12,
+  },
+  searchInput: {
+    flex: 1, borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
+    padding: 10, fontSize: 14, backgroundColor: '#FAFAFA',
   },
   statLabel: { fontSize: 11, color: '#888' },
   statValue: { fontWeight: 'bold', fontSize: 15, marginTop: 3 },

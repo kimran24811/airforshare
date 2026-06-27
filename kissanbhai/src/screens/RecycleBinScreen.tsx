@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView, Alert,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  SafeAreaView, Alert, TextInput,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
@@ -12,7 +13,16 @@ type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Recycl
 
 export default function RecycleBinScreen({ navigation }: Props) {
   const { transactions, updateTransaction, permanentDeleteTransaction } = useData();
+  const [search, setSearch] = useState('');
+
   const deleted = transactions.filter(t => t.deleted);
+  const filtered = search.trim()
+    ? deleted.filter(t =>
+        t.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        t.category.toLowerCase().includes(search.toLowerCase()) ||
+        t.items.some(i => i.name.toLowerCase().includes(search.toLowerCase()))
+      )
+    : deleted;
 
   const restore = async (id: string) => {
     try { await updateTransaction(id, { deleted: false, deletedAt: null } as any); }
@@ -47,13 +57,28 @@ export default function RecycleBinScreen({ navigation }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
+      <View style={s.searchRow}>
+        <TextInput
+          style={s.searchInput}
+          placeholder="🔍 Search deleted entries…"
+          placeholderTextColor="#999"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 8 }}>
+            <Text style={{ color: '#888', fontSize: 16 }}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <FlatList
-        data={deleted}
+        data={filtered}
         keyExtractor={t => t.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: '#aaa', marginTop: 64 }}>
-            Recycle bin is empty.
+            {search.trim() ? 'No matching entries.' : 'Recycle bin is empty.'}
           </Text>
         }
         renderItem={({ item }) => (
@@ -96,6 +121,15 @@ const s = StyleSheet.create({
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E8F5E9',
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: '#E8F5E9',
+  },
+  searchInput: {
+    flex: 1, borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
+    padding: 10, fontSize: 14, backgroundColor: '#FAFAFA',
+  },
   card: {
     backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 12,
     elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,

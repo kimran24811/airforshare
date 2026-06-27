@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView,
-  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -31,6 +31,7 @@ export default function CategoryScreen({ navigation, route }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState('');
 
   const filtered = transactions.filter(t => !t.deleted && t.category === category);
 
@@ -58,7 +59,10 @@ export default function CategoryScreen({ navigation, route }: Props) {
     }
   }
 
-  const groups = Array.from(customerMap.values());
+  const allGroups = Array.from(customerMap.values());
+  const groups = search.trim()
+    ? allGroups.filter(g => g.customerName.toLowerCase().includes(search.toLowerCase()))
+    : allGroups;
 
   const totalSales     = filtered.reduce((s, t) => s + t.totalAmount, 0);
   const totalReceived  = filtered.reduce((s, t) => s + t.totalPaid, 0);
@@ -86,6 +90,21 @@ export default function CategoryScreen({ navigation, route }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
+      <View style={s.searchRow}>
+        <TextInput
+          style={s.searchInput}
+          placeholder="🔍 Search customers…"
+          placeholderTextColor="#999"
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 8 }}>
+            <Text style={{ color: '#888', fontSize: 16 }}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <View style={s.statsCard}>
         <View style={{ flexDirection: 'row' }}>
           <StatBox label="Total Sales" value={formatCurrency(totalSales)} color="#2E7D32" />
@@ -93,7 +112,8 @@ export default function CategoryScreen({ navigation, route }: Props) {
           <StatBox label="Remaining"   value={formatCurrency(totalRemaining)} color="#C62828" />
         </View>
         <Text style={{ color: '#888', fontSize: 12, marginTop: 10 }}>
-          {filtered.length} entries  •  {groups.length} customers
+          {filtered.length} entries  •  {allGroups.length} customers
+          {search.trim() ? `  •  ${groups.length} matching` : ''}
         </Text>
       </View>
 
@@ -207,6 +227,15 @@ const s = StyleSheet.create({
   },
   customerName: { fontSize: 16, fontWeight: 'bold', flex: 1 },
   balance: { fontWeight: 'bold', fontSize: 14 },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: '#E8F5E9',
+  },
+  searchInput: {
+    flex: 1, borderWidth: 1, borderColor: '#C8E6C9', borderRadius: 10,
+    padding: 10, fontSize: 14, backgroundColor: '#FAFAFA',
+  },
   empty: { textAlign: 'center', color: '#aaa', marginTop: 64, lineHeight: 26 },
   fab: {
     position: 'absolute', bottom: 24, right: 24,
