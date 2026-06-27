@@ -91,12 +91,15 @@ export async function generateCustomerPdf(
 
   for (const t of active) {
     const ts = t.date?.toDate?.()?.getTime?.() ?? (t.date?.seconds ?? 0) * 1000;
+    const itemList = t.items.length > 0
+      ? t.items.map(i => i.name).filter(Boolean).join(', ')
+      : '—';
     allRows.push({
       ts,
       html: `
         <tr>
           <td style="padding:8px">${dateStr(t.date)}</td>
-          <td style="padding:8px;text-transform:capitalize">${t.category}</td>
+          <td style="padding:8px;color:#333">${itemList}</td>
           <td style="padding:8px;text-align:center;color:#2E7D32;font-weight:600">📦 Sale</td>
           <td style="padding:8px;text-align:right">${formatCurrency(t.totalAmount)}</td>
           <td style="padding:8px;text-align:right;color:${t.totalBalance > 0 ? '#C62828' : '#2E7D32'}">
@@ -114,10 +117,10 @@ export async function generateCustomerPdf(
       html: `
         <tr style="background:#EFF6FF">
           <td style="padding:8px">${dateStr(p.date)}</td>
-          <td style="padding:8px">—</td>
+          <td style="padding:8px;color:#888">${p.note || '—'}</td>
           <td style="padding:8px;text-align:center;color:#1565C0;font-weight:600">💳 Payment</td>
           <td style="padding:8px;text-align:right;color:#1565C0;font-weight:bold">${formatCurrency(p.amount)}</td>
-          <td style="padding:8px;text-align:center;color:#1565C0">${p.note || '—'}</td>
+          <td style="padding:8px;text-align:center;color:#2E7D32">—</td>
         </tr>
       `,
     });
@@ -141,10 +144,10 @@ export async function generateCustomerPdf(
       <table width="100%" border="1" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-color:#ddd">
         <tr style="background:#E8F5E9">
           <th style="padding:8px;text-align:left">Date</th>
-          <th style="padding:8px;text-align:left">Category</th>
+          <th style="padding:8px;text-align:left">Items / Note</th>
           <th style="padding:8px;text-align:center">Type</th>
           <th style="padding:8px;text-align:right">Amount</th>
-          <th style="padding:8px;text-align:right">Balance / Note</th>
+          <th style="padding:8px;text-align:right">Balance</th>
         </tr>
         ${rows}
       </table>
