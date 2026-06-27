@@ -5,13 +5,14 @@ import {
 } from 'firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
 import { db } from '../config/firebase';
-import { Transaction, Customer, Category } from '../types';
+import { Transaction, Customer, Category, CustomerPayment } from '../types';
 import { saveCache, loadCache, enqueue, flushPendingWrites } from '../utils/offlineSync';
 
 interface Ctx {
   transactions: Transaction[];
   customers: Customer[];
   categories: Category[];
+  payments: CustomerPayment[];
   isOnline: boolean;
   pendingCount: number;
   // write helpers
@@ -21,6 +22,7 @@ interface Ctx {
   addCustomer: (name: string, phone: string) => Promise<Customer>;
   addCategory: (name: string, emoji: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  addPayment: (data: Omit<CustomerPayment, 'id'>) => Promise<void>;
 }
 
 const DataContext = createContext<Ctx | null>(null);
@@ -29,6 +31,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [customers,    setCustomers]    = useState<Customer[]>([]);
   const [categories,   setCategories]   = useState<Category[]>([]);
+  const [payments,     setPayments]     = useState<CustomerPayment[]>([]);
   const [isOnline,     setIsOnline]     = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const onlineRef = useRef(true);
@@ -38,6 +41,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loadCache<Transaction>('transactions').then(d => { if (d.length) setTransactions(d); });
     loadCache<Customer>('customers').then(d => { if (d.length) setCustomers(d); });
     loadCache<Category>('categories').then(d => { if (d.length) setCategories(d); });
+    loadCache<CustomerPayment>('payments').then(d => { if (d.length) setPayments(d); });
   }, []);
 
   // 2. Firestore subscriptions — update cache whenever server data arrives
@@ -82,7 +86,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       },
       () => {},
     );
-    return () => { unsubT(); unsubC(); unsubCat(); };
+    const unsubP = onSnapshot(
+      query(collection(db, 'customerPayments'), orderBy('date', 'desc')),
+      snap => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomerPayment));
+        if (!snap.metadata.fromCache) {
+          setPayments(data);
+          saveCache('payments', data);
+        } else if (data.length > 0) {
+          setPayments(data);
+        }
+      },
+      () => {},
+    );
+    return () => { unsubT(); unsubC(); unsubCat(); unsubP(); };
   }, []);
 
   // 3. NetInfo — flush queue when internet comes back
@@ -181,11 +198,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const addPayment = async (data: Omit<CustomerPayment, 'id'>) => {
+    if (onlineRef.current) {
+      await addDoc(collection(db, 'customerPayments'), { ...data, date: Timestamp.now() });
+    } else {
+      await enqueue({ type: 'add', col: 'customerPayments', data: { ...data, date: Timestamp.now() } });
+      const fake: CustomerPayment = {
+        ...data, id: `tmp_${Date.now()}`,
+        date: { seconds: Date.now() / 1000, nanoseconds: 0, toDate: () => new Date() } as any,
+      };
+      setPayments(prev => {
+        const next = [fake, ...prev];
+        saveCache('payments', next);
+        return next;
+      });
+      setPendingCount(p => p + 1);
+    }
+  };
+
   return (
     <DataContext.Provider value={{
-      transactions, customers, categories, isOnline, pendingCount,
+      transactions, customers, categories, payments, isOnline, pendingCount,
       addTransaction, updateTransaction, permanentDeleteTransaction,
-      addCustomer, addCategory, deleteCategory,
+      addCustomer, addCategory, deleteCategory, addPayment,
     }}>
       {children}
     </DataContext.Provider>

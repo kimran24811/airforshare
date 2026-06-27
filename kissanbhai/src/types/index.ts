@@ -44,3 +44,13 @@ export interface Category {
   emoji: string;
   createdAt?: any;
 }
+
+export interface CustomerPayment {
+  id: string;
+  customerId: string;
+  customerName: string;
+  category: string;
+  amount: number;
+  note: string;
+  date?: any;
+}
