@@ -9,6 +9,7 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import { formatCurrency } from '../utils/currency';
 import { generateCustomerPdf } from '../utils/pdf';
+import { authenticate } from '../utils/biometric';
 import { useData } from '../context/DataContext';
 import { Transaction, CustomerPayment } from '../types';
 
@@ -28,14 +29,36 @@ function getTimestamp(item: ListItem): number {
 
 export default function CustomerDetailScreen({ navigation, route }: Props) {
   const { customerId, category } = route.params;
-  const { transactions, customers, payments, addPayment } = useData();
+  const { transactions, customers, payments, addPayment, updatePayment, deletePayment } = useData();
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const [payModal,    setPayModal]    = useState(false);
-  const [payAmount,   setPayAmount]   = useState('');
-  const [payNote,     setPayNote]     = useState('');
+  const [payModal,     setPayModal]     = useState(false);
+  const [editingPay,   setEditingPay]   = useState<CustomerPayment | null>(null);
+  const [payAmount,    setPayAmount]    = useState('');
+  const [payNote,      setPayNote]      = useState('');
   const [payingSaving, setPayingSaving] = useState(false);
   const [search, setSearch] = useState('');
+
+  const openAddPayment = () => {
+    setEditingPay(null);
+    setPayAmount('');
+    setPayNote('');
+    setPayModal(true);
+  };
+
+  const openEditPayment = (p: CustomerPayment) => {
+    setEditingPay(p);
+    setPayAmount(String(p.amount));
+    setPayNote(p.note ?? '');
+    setPayModal(true);
+  };
+
+  const closePayModal = () => {
+    setPayModal(false);
+    setEditingPay(null);
+    setPayAmount('');
+    setPayNote('');
+  };
 
   const customer = customers.find(c => c.id === customerId) ?? null;
   const txns = transactions.filter(t => !t.deleted && t.customerId === customerId);
@@ -70,27 +93,54 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
       })
     : allCombined;
 
-  const handlePayment = async () => {
+  const handleSavePayment = async () => {
     const amount = parseFloat(payAmount);
     if (!amount || amount <= 0) { Alert.alert('Invalid', 'Enter a valid amount'); return; }
     setPayingSaving(true);
     try {
-      await addPayment({
-        customerId,
-        customerName: customer?.name ?? '',
-        category: category ?? '',
-        amount,
-        note: payNote.trim(),
-      });
-      setPayModal(false);
-      setPayAmount('');
-      setPayNote('');
-      Alert.alert('Done', `Payment of ${formatCurrency(amount)} recorded`);
+      if (editingPay) {
+        await updatePayment(editingPay.id, { amount, note: payNote.trim() });
+        closePayModal();
+        Alert.alert('Updated', `Payment updated to ${formatCurrency(amount)}`);
+      } else {
+        await addPayment({
+          customerId,
+          customerName: customer?.name ?? '',
+          category: category ?? '',
+          amount,
+          note: payNote.trim(),
+        });
+        closePayModal();
+        Alert.alert('Done', `Payment of ${formatCurrency(amount)} recorded`);
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
       setPayingSaving(false);
     }
+  };
+
+  const handleDeletePayment = async (p: CustomerPayment) => {
+    const ok = await authenticate('Verify to delete payment');
+    if (!ok) return;
+    Alert.alert(
+      'Delete Payment',
+      `Delete payment of ${formatCurrency(p.amount)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePayment(p.id);
+              closePayModal();
+            } catch (e: any) {
+              Alert.alert('Error', e.message);
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -157,7 +207,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
 
             <TouchableOpacity
               style={s.payBtn}
-              onPress={() => setPayModal(true)}
+              onPress={openAddPayment}
               disabled={fullySettled}
             >
               <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>
@@ -175,7 +225,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
         renderItem={({ item }) =>
           item.type === 'sale'
             ? <SaleCard txn={item.data} onPress={() => navigation.navigate('EntryDetail', { transactionId: item.data.id })} />
-            : <PaymentCard payment={item.data} />
+            : <PaymentCard payment={item.data} onPress={() => openEditPayment(item.data)} />
         }
       />
 
@@ -192,22 +242,24 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
         <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32 }}>+</Text>
       </TouchableOpacity>
 
-      {/* Payment modal */}
+      {/* Add / Edit Payment modal */}
       <Modal
         visible={payModal}
         transparent
         animationType="fade"
-        onRequestClose={() => { setPayModal(false); setPayAmount(''); setPayNote(''); }}
+        onRequestClose={closePayModal}
       >
         <KeyboardAvoidingView
           style={s.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Record Payment</Text>
-            <Text style={{ color: '#888', fontSize: 13, marginBottom: 14 }}>
-              Outstanding: {formatCurrency(totalOutstanding)}
-            </Text>
+            <Text style={s.modalTitle}>{editingPay ? 'Edit Payment' : 'Record Payment'}</Text>
+            {!editingPay && (
+              <Text style={{ color: '#888', fontSize: 13, marginBottom: 14 }}>
+                Outstanding: {formatCurrency(totalOutstanding)}
+              </Text>
+            )}
             <TextInput
               style={s.modalInput}
               placeholder="Amount (₨)"
@@ -228,13 +280,21 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity
                 style={[s.modalBtn, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc' }]}
-                onPress={() => { setPayModal(false); setPayAmount(''); setPayNote(''); }}
+                onPress={closePayModal}
               >
                 <Text style={{ color: '#333', fontWeight: '600' }}>Cancel</Text>
               </TouchableOpacity>
+              {editingPay && (
+                <TouchableOpacity
+                  style={[s.modalBtn, { backgroundColor: '#FFEBEE', borderWidth: 1, borderColor: '#FFCDD2' }]}
+                  onPress={() => handleDeletePayment(editingPay)}
+                >
+                  <Text style={{ color: '#C62828', fontWeight: '600' }}>Delete</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[s.modalBtn, { flex: 1.5, backgroundColor: '#1565C0' }, payingSaving && { opacity: 0.7 }]}
-                onPress={handlePayment}
+                onPress={handleSavePayment}
                 disabled={payingSaving}
               >
                 {payingSaving
@@ -277,10 +337,10 @@ function SaleCard({ txn: t, onPress }: { txn: Transaction; onPress: () => void }
   );
 }
 
-function PaymentCard({ payment: p }: { payment: CustomerPayment }) {
+function PaymentCard({ payment: p, onPress }: { payment: CustomerPayment; onPress: () => void }) {
   const dateStr = p.date?.toDate?.()?.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) ?? '';
   return (
-    <View style={s.payCard}>
+    <TouchableOpacity style={s.payCard} onPress={onPress} activeOpacity={0.7}>
       <View style={s.payAccent} />
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -288,13 +348,14 @@ function PaymentCard({ payment: p }: { payment: CustomerPayment }) {
           <Text style={{ color: '#888', fontSize: 12 }}>{dateStr}</Text>
         </View>
         {p.note ? <Text style={{ color: '#666', fontSize: 12, marginTop: 3 }}>{p.note}</Text> : null}
-        <View style={{ marginTop: 6 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, alignItems: 'center' }}>
           <View style={s.payTag}>
             <Text style={{ color: '#1565C0', fontSize: 11, fontWeight: '600' }}>💳 Payment</Text>
           </View>
+          <Text style={{ color: '#999', fontSize: 11 }}>Tap to edit</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

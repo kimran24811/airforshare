@@ -23,6 +23,8 @@ interface Ctx {
   addCategory: (name: string, emoji: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   addPayment: (data: Omit<CustomerPayment, 'id'>) => Promise<void>;
+  updatePayment: (id: string, data: Partial<CustomerPayment>) => Promise<void>;
+  deletePayment: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<Ctx | null>(null);
@@ -216,11 +218,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updatePayment = async (id: string, data: Partial<CustomerPayment>) => {
+    if (onlineRef.current) {
+      await updateDoc(doc(db, 'customerPayments', id), data as any);
+    } else {
+      await enqueue({ type: 'update', col: 'customerPayments', docId: id, data });
+      setPayments(prev => {
+        const next = prev.map(p => p.id === id ? { ...p, ...data } : p);
+        saveCache('payments', next);
+        return next;
+      });
+      setPendingCount(p => p + 1);
+    }
+  };
+
+  const deletePayment = async (id: string) => {
+    if (onlineRef.current) {
+      await deleteDoc(doc(db, 'customerPayments', id));
+    } else {
+      await enqueue({ type: 'delete', col: 'customerPayments', docId: id });
+      setPayments(prev => {
+        const next = prev.filter(p => p.id !== id);
+        saveCache('payments', next);
+        return next;
+      });
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       transactions, customers, categories, payments, isOnline, pendingCount,
       addTransaction, updateTransaction, permanentDeleteTransaction,
-      addCustomer, addCategory, deleteCategory, addPayment,
+      addCustomer, addCategory, deleteCategory, addPayment, updatePayment, deletePayment,
     }}>
       {children}
     </DataContext.Provider>
