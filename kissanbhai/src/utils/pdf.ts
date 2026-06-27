@@ -1,7 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
-import { Transaction, Customer } from '../types';
+import { Transaction, Customer, CustomerPayment } from '../types';
 import { formatCurrency } from './currency';
 
 function dateStr(ts: any): string {
@@ -74,22 +74,57 @@ export async function generateEntryPdf(txn: Transaction): Promise<void> {
   await Sharing.shareAsync(dest, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }
 
-export async function generateCustomerPdf(customer: Customer, transactions: Transaction[]): Promise<void> {
+export async function generateCustomerPdf(
+  customer: Customer,
+  transactions: Transaction[],
+  payments: CustomerPayment[] = [],
+): Promise<void> {
   const active = transactions.filter(t => !t.deleted);
-  const totalSales = active.reduce((s, t) => s + t.totalAmount, 0);
-  const totalBalance = active.reduce((s, t) => s + t.totalBalance, 0);
+  const totalSales      = active.reduce((s, t) => s + t.totalAmount, 0);
+  const totalRawBalance = active.reduce((s, t) => s + t.totalBalance, 0);
+  const totalPaidDirect = payments.reduce((s, p) => s + p.amount, 0);
+  const outstanding     = Math.max(0, totalRawBalance - totalPaidDirect);
+  const cleared         = outstanding <= 0;
 
-  const rows = active.map(t => `
-    <tr>
-      <td style="padding:8px">${dateStr(t.date)}</td>
-      <td style="padding:8px;text-transform:capitalize">${t.category}</td>
-      <td style="padding:8px;text-align:right">${formatCurrency(t.totalAmount)}</td>
-      <td style="padding:8px;text-align:right;color:#2E7D32">${formatCurrency(t.totalPaid)}</td>
-      <td style="padding:8px;text-align:right;color:${t.totalBalance > 0 ? '#C62828' : '#2E7D32'}">
-        ${t.totalBalance <= 0 ? '✓' : formatCurrency(t.totalBalance)}
-      </td>
-    </tr>
-  `).join('');
+  type Row = { ts: number; html: string };
+  const allRows: Row[] = [];
+
+  for (const t of active) {
+    const ts = t.date?.toDate?.()?.getTime?.() ?? (t.date?.seconds ?? 0) * 1000;
+    allRows.push({
+      ts,
+      html: `
+        <tr>
+          <td style="padding:8px">${dateStr(t.date)}</td>
+          <td style="padding:8px;text-transform:capitalize">${t.category}</td>
+          <td style="padding:8px;text-align:center;color:#2E7D32;font-weight:600">📦 Sale</td>
+          <td style="padding:8px;text-align:right">${formatCurrency(t.totalAmount)}</td>
+          <td style="padding:8px;text-align:right;color:${t.totalBalance > 0 ? '#C62828' : '#2E7D32'}">
+            ${t.totalBalance <= 0 ? '✓' : formatCurrency(t.totalBalance)}
+          </td>
+        </tr>
+      `,
+    });
+  }
+
+  for (const p of payments) {
+    const ts = p.date?.toDate?.()?.getTime?.() ?? (p.date?.seconds ?? 0) * 1000;
+    allRows.push({
+      ts,
+      html: `
+        <tr style="background:#EFF6FF">
+          <td style="padding:8px">${dateStr(p.date)}</td>
+          <td style="padding:8px">—</td>
+          <td style="padding:8px;text-align:center;color:#1565C0;font-weight:600">💳 Payment</td>
+          <td style="padding:8px;text-align:right;color:#1565C0;font-weight:bold">${formatCurrency(p.amount)}</td>
+          <td style="padding:8px;text-align:center;color:#1565C0">${p.note || '—'}</td>
+        </tr>
+      `,
+    });
+  }
+
+  allRows.sort((a, b) => b.ts - a.ts);
+  const rows = allRows.map(r => r.html).join('');
 
   const html = `
     <html><body style="font-family:sans-serif;padding:24px;color:#222;max-width:600px;margin:auto">
@@ -99,16 +134,17 @@ export async function generateCustomerPdf(customer: Customer, transactions: Tran
       <table style="width:100%;margin-bottom:16px">
         <tr><td><b>Customer</b></td><td>${customer.name}</td></tr>
         ${customer.phone ? `<tr><td><b>Phone</b></td><td>${customer.phone}</td></tr>` : ''}
-        <tr><td><b>Total Sales</b></td><td style="color:#2E7D32">${formatCurrency(totalSales)}</td></tr>
-        <tr><td><b>Outstanding</b></td><td style="color:${totalBalance > 0 ? '#C62828' : '#2E7D32'};font-weight:bold">${formatCurrency(totalBalance)}</td></tr>
+        <tr><td><b>Total Sales</b></td><td style="color:#1a1a1a">${formatCurrency(totalSales)}</td></tr>
+        <tr><td><b>Total Payments</b></td><td style="color:#1565C0">${formatCurrency(totalPaidDirect)}</td></tr>
+        <tr><td><b>Outstanding</b></td><td style="color:${cleared ? '#2E7D32' : '#C62828'};font-weight:bold">${cleared ? '✓ Cleared' : formatCurrency(outstanding)}</td></tr>
       </table>
       <table width="100%" border="1" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-color:#ddd">
         <tr style="background:#E8F5E9">
           <th style="padding:8px;text-align:left">Date</th>
           <th style="padding:8px;text-align:left">Category</th>
-          <th style="padding:8px;text-align:right">Total</th>
-          <th style="padding:8px;text-align:right">Paid</th>
-          <th style="padding:8px;text-align:right">Balance</th>
+          <th style="padding:8px;text-align:center">Type</th>
+          <th style="padding:8px;text-align:right">Amount</th>
+          <th style="padding:8px;text-align:right">Balance / Note</th>
         </tr>
         ${rows}
       </table>

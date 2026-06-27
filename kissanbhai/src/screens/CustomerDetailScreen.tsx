@@ -104,7 +104,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
           onPress={async () => {
             if (!customer) return;
             setPdfLoading(true);
-            try { await generateCustomerPdf(customer, txns); }
+            try { await generateCustomerPdf(customer, txns, custPayments); }
             catch (e: any) { Alert.alert('Error', e.message); }
             finally { setPdfLoading(false); }
           }}
