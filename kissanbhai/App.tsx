@@ -22,20 +22,35 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [biometricPassed, setBiometricPassed] = useState(false);
+  // Prevents biometric from firing twice when onAuthStateChanged re-fires
+  // during the biometric prompt (common on Android due to activity lifecycle).
+  const authHandled = React.useRef(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async u => {
       if (u) {
+        if (authHandled.current) {
+          // Already passed biometric this session — just keep user alive
+          setUser(u);
+          setBiometricPassed(true);
+          return;
+        }
+        authHandled.current = true; // lock before showing prompt
         const ok = await authenticate('Verify your identity to open KissanBhai');
         if (ok) {
           setUser(u);
           setBiometricPassed(true);
         } else {
-          await signOut(auth);
+          // Biometric cancelled/failed — return to login.
+          // Don't await signOut here; awaiting it triggers onAuthStateChanged
+          // again before authHandled resets, causing a second biometric prompt.
+          authHandled.current = false;
           setUser(null);
           setBiometricPassed(false);
+          signOut(auth).catch(() => {});
         }
       } else {
+        authHandled.current = false;
         setUser(null);
         setBiometricPassed(false);
       }
