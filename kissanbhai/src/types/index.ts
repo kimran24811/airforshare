@@ -33,8 +33,6 @@ export interface Transaction {
   editedAt?: any;
   deleted?: boolean;
   deletedAt?: any;
-  photoUrls?: string[];
-  voiceNoteUrl?: string;
   paymentHistory?: PaymentRecord[];
 }
 
