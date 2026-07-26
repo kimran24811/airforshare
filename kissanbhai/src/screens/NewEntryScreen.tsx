@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView,
@@ -6,8 +6,7 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { getDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { Timestamp } from 'firebase/firestore';
 import { RootStackParamList } from '../navigation/types';
 import { Customer, TransactionItem } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -21,7 +20,7 @@ type Props = {
 const emptyItem = (): TransactionItem => ({ name: '', price: 0, paid: 0, balance: 0 });
 
 export default function NewEntryScreen({ navigation, route }: Props) {
-  const { customers, categories, addTransaction, addCustomer } = useData();
+  const { customers, categories, transactions, addTransaction, updateTransaction, addCustomer } = useData();
 
   const presetCategory    = route.params?.category;
   const editId            = route.params?.editId;
@@ -43,19 +42,20 @@ export default function NewEntryScreen({ navigation, route }: Props) {
   const [saving,              setSaving]              = useState(false);
   const [loading,             setLoading]             = useState(isEdit);
 
+  const editLoaded = useRef(false);
+
   useEffect(() => {
-    if (!editId) return;
-    getDoc(doc(db, 'transactions', editId)).then(d => {
-      if (!d.exists()) return;
-      const data = d.data();
-      setCategory(data.category ?? '');
-      setCustomerSearch(data.customerName ?? '');
-      setSelectedCustomer({ id: data.customerId, name: data.customerName, phone: data.customerPhone ?? '' });
-      setDescription(data.description ?? '');
-      setItems(data.items?.length ? data.items : [emptyItem()]);
-      setLoading(false);
-    });
-  }, [editId]);
+    if (!editId || editLoaded.current) return;
+    const data = transactions.find(t => t.id === editId);
+    if (!data) return; // context still booting from cache
+    editLoaded.current = true;
+    setCategory(data.category ?? '');
+    setCustomerSearch(data.customerName ?? '');
+    setSelectedCustomer({ id: data.customerId, name: data.customerName, phone: data.customerPhone ?? '' });
+    setDescription(data.description ?? '');
+    setItems(data.items?.length ? data.items : [emptyItem()]);
+    setLoading(false);
+  }, [editId, transactions]);
 
   useEffect(() => {
     if (quickMode) return;
@@ -102,6 +102,9 @@ export default function NewEntryScreen({ navigation, route }: Props) {
 
     setSaving(true);
     try {
+      // Totals from valid items only — an unnamed row with a price must not count
+      const vAmount  = validItems.reduce((s, i) => s + i.price, 0);
+      const vPaid    = validItems.reduce((s, i) => s + i.paid, 0);
       const payload = {
         customerId:    customer.id,
         customerName:  customer.name,
@@ -109,13 +112,13 @@ export default function NewEntryScreen({ navigation, route }: Props) {
         category:      category || 'general',
         items: validItems,
         description,
-        totalAmount,
-        totalPaid,
-        totalBalance,
+        totalAmount:  vAmount,
+        totalPaid:    vPaid,
+        totalBalance: vAmount - vPaid,
       };
 
       if (isEdit && editId) {
-        await updateDoc(doc(db, 'transactions', editId), { ...payload, editedAt: Timestamp.now() });
+        await updateTransaction(editId, { ...payload, editedAt: Timestamp.now() });
         Alert.alert('Saved', 'Entry updated successfully', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);

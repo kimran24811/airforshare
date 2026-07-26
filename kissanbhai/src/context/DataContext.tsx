@@ -6,7 +6,7 @@ import {
 import NetInfo from '@react-native-community/netinfo';
 import { db } from '../config/firebase';
 import { Transaction, Customer, Category, CustomerPayment } from '../types';
-import { saveCache, loadCache, enqueue, flushPendingWrites } from '../utils/offlineSync';
+import { saveCache, loadCache, enqueue, flushPendingWrites, getPendingCount } from '../utils/offlineSync';
 
 interface Ctx {
   transactions: Transaction[];
@@ -44,6 +44,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loadCache<Customer>('customers').then(d => { if (d.length) setCustomers(d); });
     loadCache<Category>('categories').then(d => { if (d.length) setCategories(d); });
     loadCache<CustomerPayment>('payments').then(d => { if (d.length) setPayments(d); });
+    getPendingCount().then(setPendingCount);
   }, []);
 
   // 2. Firestore subscriptions — update cache whenever server data arrives
@@ -110,7 +111,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const online = !!(state.isConnected && state.isInternetReachable !== false);
       onlineRef.current = online;
       setIsOnline(online);
-      if (online) flushPendingWrites().then(() => setPendingCount(0));
+      if (online) flushPendingWrites().then(remaining => setPendingCount(remaining));
     });
     return () => unsub();
   }, []);
@@ -121,9 +122,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await addDoc(collection(db, 'transactions'), { ...data, date: Timestamp.now() });
     } else {
-      await enqueue({ type: 'add', col: 'transactions', data: { ...data, date: Timestamp.now() } });
+      const tmpId = `tmp_${Date.now()}`;
+      const count = await enqueue({ type: 'add', col: 'transactions', tmpId, data: { ...data, date: Timestamp.now() } });
       const fake: Transaction = {
-        ...data, id: `tmp_${Date.now()}`,
+        ...data, id: tmpId,
         date: { seconds: Date.now() / 1000, nanoseconds: 0, toDate: () => new Date() } as any,
       };
       setTransactions(prev => {
@@ -131,7 +133,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         saveCache('transactions', next);
         return next;
       });
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
     }
   };
 
@@ -139,13 +141,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await updateDoc(doc(db, 'transactions', id), data as any);
     } else {
-      await enqueue({ type: 'update', col: 'transactions', docId: id, data });
+      const count = await enqueue({ type: 'update', col: 'transactions', docId: id, data });
       setTransactions(prev => {
         const next = prev.map(t => t.id === id ? { ...t, ...data } : t);
         saveCache('transactions', next);
         return next;
       });
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
     }
   };
 
@@ -153,12 +155,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await deleteDoc(doc(db, 'transactions', id));
     } else {
-      await enqueue({ type: 'delete', col: 'transactions', docId: id });
+      const count = await enqueue({ type: 'delete', col: 'transactions', docId: id });
       setTransactions(prev => {
         const next = prev.filter(t => t.id !== id);
         saveCache('transactions', next);
         return next;
       });
+      setPendingCount(count);
     }
   };
 
@@ -168,14 +171,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return { id: ref.id, name, phone };
     } else {
       const tmpId = `tmp_${name.replace(/\s+/g, '_')}_${Date.now()}`;
-      await enqueue({ type: 'add', col: 'customers', data: { name, phone, createdAt: Timestamp.now() } });
+      const count = await enqueue({ type: 'add', col: 'customers', tmpId, data: { name, phone, createdAt: Timestamp.now() } });
       const cust: Customer = { id: tmpId, name, phone };
       setCustomers(prev => {
         const next = [...prev, cust].sort((a, b) => a.name.localeCompare(b.name));
         saveCache('customers', next);
         return next;
       });
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
       return cust;
     }
   };
@@ -184,10 +187,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await addDoc(collection(db, 'categories'), { name, emoji, createdAt: Timestamp.now() });
     } else {
-      await enqueue({ type: 'add', col: 'categories', data: { name, emoji, createdAt: Timestamp.now() } });
-      const fake: Category = { id: `tmp_${Date.now()}`, name, emoji };
+      const tmpId = `tmp_${Date.now()}`;
+      const count = await enqueue({ type: 'add', col: 'categories', tmpId, data: { name, emoji, createdAt: Timestamp.now() } });
+      const fake: Category = { id: tmpId, name, emoji };
       setCategories(prev => [...prev, fake]);
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
     }
   };
 
@@ -195,8 +199,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await deleteDoc(doc(db, 'categories', id));
     } else {
-      await enqueue({ type: 'delete', col: 'categories', docId: id });
+      const count = await enqueue({ type: 'delete', col: 'categories', docId: id });
       setCategories(prev => prev.filter(c => c.id !== id));
+      setPendingCount(count);
     }
   };
 
@@ -204,9 +209,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await addDoc(collection(db, 'customerPayments'), { ...data, date: Timestamp.now() });
     } else {
-      await enqueue({ type: 'add', col: 'customerPayments', data: { ...data, date: Timestamp.now() } });
+      const tmpId = `tmp_${Date.now()}`;
+      const count = await enqueue({ type: 'add', col: 'customerPayments', tmpId, data: { ...data, date: Timestamp.now() } });
       const fake: CustomerPayment = {
-        ...data, id: `tmp_${Date.now()}`,
+        ...data, id: tmpId,
         date: { seconds: Date.now() / 1000, nanoseconds: 0, toDate: () => new Date() } as any,
       };
       setPayments(prev => {
@@ -214,7 +220,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         saveCache('payments', next);
         return next;
       });
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
     }
   };
 
@@ -222,13 +228,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await updateDoc(doc(db, 'customerPayments', id), data as any);
     } else {
-      await enqueue({ type: 'update', col: 'customerPayments', docId: id, data });
+      const count = await enqueue({ type: 'update', col: 'customerPayments', docId: id, data });
       setPayments(prev => {
         const next = prev.map(p => p.id === id ? { ...p, ...data } : p);
         saveCache('payments', next);
         return next;
       });
-      setPendingCount(p => p + 1);
+      setPendingCount(count);
     }
   };
 
@@ -236,12 +242,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (onlineRef.current) {
       await deleteDoc(doc(db, 'customerPayments', id));
     } else {
-      await enqueue({ type: 'delete', col: 'customerPayments', docId: id });
+      const count = await enqueue({ type: 'delete', col: 'customerPayments', docId: id });
       setPayments(prev => {
         const next = prev.filter(p => p.id !== id);
         saveCache('payments', next);
         return next;
       });
+      setPendingCount(count);
     }
   };
 

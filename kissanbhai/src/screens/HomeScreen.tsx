@@ -8,12 +8,13 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { RootStackParamList } from '../navigation/types';
 import { formatCurrency } from '../utils/currency';
+import { totalOutstanding } from '../utils/balance';
 import { useData } from '../context/DataContext';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Home'> };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { transactions, customers, categories, isOnline, pendingCount } = useData();
+  const { transactions, customers, categories, payments, isOnline, pendingCount } = useData();
   const [search, setSearch] = useState('');
 
   const active = transactions.filter(t => !t.deleted);
@@ -29,13 +30,13 @@ export default function HomeScreen({ navigation }: Props) {
     const list = active.filter(t => t.category === cat);
     return {
       sales: list.reduce((s, t) => s + t.totalAmount, 0),
-      recv:  list.reduce((s, t) => s + t.totalBalance, 0),
+      recv:  totalOutstanding(list, payments.filter(p => p.category === cat)),
     };
   };
 
   const overall = {
     sales: active.reduce((s, t) => s + t.totalAmount, 0),
-    recv:  active.reduce((s, t) => s + t.totalBalance, 0),
+    recv:  totalOutstanding(active, payments),
   };
 
   return (

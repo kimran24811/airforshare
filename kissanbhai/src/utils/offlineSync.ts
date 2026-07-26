@@ -79,6 +79,7 @@ export type PendingWrite = {
   type: 'add' | 'update' | 'delete';
   col: string;
   docId?: string;
+  tmpId?: string;
   data?: any;
 };
 
@@ -93,18 +94,50 @@ async function saveQueue(q: PendingWrite[]) {
   try { await AsyncStorage.setItem(K.pending, JSON.stringify(q)); } catch (_) {}
 }
 
-export async function enqueue(write: Omit<PendingWrite, 'id'>) {
-  const q = await getQueue();
-  q.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, ...write });
-  await saveQueue(q);
+export async function getPendingCount(): Promise<number> {
+  return (await getQueue()).length;
 }
 
-export async function flushPendingWrites(): Promise<void> {
+// Updates/deletes that target a doc created offline (tmp_ id) can never reach
+// Firestore under that id — fold them into the queued add instead.
+export async function enqueue(write: Omit<PendingWrite, 'id'>): Promise<number> {
   const q = await getQueue();
-  if (!q.length) return;
+  // Timestamps must survive the JSON round-trip in AsyncStorage — store them
+  // in the __ts format that deserForFirestore understands.
+  const data = write.data ? ser(write.data) : undefined;
+  if (write.type !== 'add' && write.docId?.startsWith('tmp_')) {
+    const addIdx = q.findIndex(op => op.type === 'add' && op.col === write.col && op.tmpId === write.docId);
+    if (addIdx !== -1) {
+      if (write.type === 'update') q[addIdx].data = { ...q[addIdx].data, ...data };
+      else q.splice(addIdx, 1); // delete cancels the pending add
+    }
+  } else {
+    q.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, ...write, data });
+  }
+  await saveQueue(q);
+  return q.length;
+}
+
+let flushing = false;
+
+export async function flushPendingWrites(): Promise<number> {
+  if (flushing) return getPendingCount();
+  flushing = true;
+  try {
+    return await flushQueue();
+  } finally {
+    flushing = false;
+  }
+}
+
+async function flushQueue(): Promise<number> {
+  const q = await getQueue();
+  if (!q.length) return 0;
 
   const failed: PendingWrite[] = [];
   for (const op of q) {
+    // Leftover op against a doc that only ever existed locally — unrecoverable, drop it
+    if (op.type !== 'add' && op.docId?.startsWith('tmp_')) continue;
     try {
       const data = op.data ? deserForFirestore(op.data) : undefined;
 
@@ -133,4 +166,5 @@ export async function flushPendingWrites(): Promise<void> {
     }
   }
   await saveQueue(failed);
+  return failed.length;
 }

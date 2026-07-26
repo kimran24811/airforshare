@@ -23,8 +23,10 @@ type ListItem =
   | { type: 'payment'; data: CustomerPayment };
 
 function getTimestamp(item: ListItem): number {
-  const raw = item.type === 'sale' ? item.data.date : item.data.date;
-  return raw?.toDate?.()?.getTime?.() ?? raw?.seconds * 1000 ?? 0;
+  const raw: any = item.data.date;
+  const ms = raw?.toDate?.()?.getTime?.();
+  if (typeof ms === 'number') return ms;
+  return typeof raw?.seconds === 'number' ? raw.seconds * 1000 : 0;
 }
 
 export default function CustomerDetailScreen({ navigation, route }: Props) {
@@ -87,7 +89,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
           );
         }
         return (
-          item.data.note.toLowerCase().includes(q) ||
+          (item.data.note ?? '').toLowerCase().includes(q) ||
           String(item.data.amount).includes(q)
         );
       })
@@ -206,7 +208,7 @@ export default function CustomerDetailScreen({ navigation, route }: Props) {
             </View>
 
             <TouchableOpacity
-              style={s.payBtn}
+              style={[s.payBtn, fullySettled && { opacity: 0.5 }]}
               onPress={openAddPayment}
               disabled={fullySettled}
             >

@@ -26,7 +26,7 @@ type CustomerGroup = {
 
 export default function CategoryScreen({ navigation, route }: Props) {
   const { category } = route.params;
-  const { transactions, customers, addCustomer } = useData();
+  const { transactions, payments, addCustomer } = useData();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
@@ -34,6 +34,7 @@ export default function CategoryScreen({ navigation, route }: Props) {
   const [search, setSearch] = useState('');
 
   const filtered = transactions.filter(t => !t.deleted && t.category === category);
+  const catPayments = payments.filter(p => p.category === category);
 
   const customerMap = new Map<string, CustomerGroup>();
   for (const t of filtered) {
@@ -52,10 +53,12 @@ export default function CategoryScreen({ navigation, route }: Props) {
     }
   }
 
-  // Also include customers with no transactions yet (just added via modal)
-  for (const c of customers) {
-    if (!customerMap.has(c.id)) {
-      // don't show them in this category list unless they have entries
+  // Customer-level payments reduce what each customer still owes in this category
+  for (const p of catPayments) {
+    const ex = customerMap.get(p.customerId);
+    if (ex) {
+      ex.totalPaid    += p.amount;
+      ex.totalBalance  = Math.max(0, ex.totalBalance - p.amount);
     }
   }
 
@@ -65,8 +68,8 @@ export default function CategoryScreen({ navigation, route }: Props) {
     : allGroups;
 
   const totalSales     = filtered.reduce((s, t) => s + t.totalAmount, 0);
-  const totalReceived  = filtered.reduce((s, t) => s + t.totalPaid, 0);
-  const totalRemaining = filtered.reduce((s, t) => s + t.totalBalance, 0);
+  const totalReceived  = filtered.reduce((s, t) => s + t.totalPaid, 0) + catPayments.reduce((s, p) => s + p.amount, 0);
+  const totalRemaining = allGroups.reduce((s, g) => s + g.totalBalance, 0);
   const label = category.charAt(0).toUpperCase() + category.slice(1);
 
   const handleAddCustomer = async () => {
